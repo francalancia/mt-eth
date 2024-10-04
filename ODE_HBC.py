@@ -27,10 +27,10 @@ class FCN(nn.Module):
 pinn = FCN(1,1,32,3)
 
 #define points for the physics loss
-t_physics = torch.linspace(0,2,100).view(-1,1).requires_grad_(True)
+t_physics = torch.linspace(0,1.5,20).view(-1,1).requires_grad_(True)
 
 #exact solution
-t_test = torch.linspace(0,2,1000).view(-1,1)
+t_test = torch.linspace(0,1.5,200).view(-1,1)
 f_x_exact = exact_solution(t_test)
 
 
