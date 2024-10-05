@@ -20,17 +20,25 @@ class FCN(nn.Module):
         x = self.fcs(x)
         x = self.fch(x)
         x = self.fce(x)
-        return x
+        
+        # we calculate the networks output for x = 0 and then use that to subract it from the real networks output
+        x0 = torch.zeros_like(x)
+        x0 = self.fcs(x0)
+        x0 = self.fch(x0)
+        x0 = self.fce(x0)
+        
+        
+        return 1 + (x*(x-x0))
     torch.manual_seed(123)
 
 #define neural network to train
-pinn = FCN(1,1,32,3)
+pinn = FCN(1,1,32,4)
 
 #define points for the physics loss
-t_physics = torch.linspace(0,1.5,20).view(-1,1).requires_grad_(True)
+t_physics = torch.linspace(0,2,20).view(-1,1).requires_grad_(True)
 
 #exact solution
-t_test = torch.linspace(0,1.5,200).view(-1,1)
+t_test = torch.linspace(0,2,200).view(-1,1)
 f_x_exact = exact_solution(t_test)
 
 
@@ -38,7 +46,7 @@ optimiser = torch.optim.Adam(pinn.parameters(),lr=1e-3)
 for i in range(1001):
     optimiser.zero_grad()
     # compute loss
-    f_x = t_physics*pinn(t_physics)+1
+    f_x = pinn(t_physics)
     df_xdx = torch.autograd.grad(f_x, t_physics, torch.ones_like(f_x), create_graph=True)[0]# (30, 1)
     loss = torch.mean((df_xdx-f_x)**2)
     
