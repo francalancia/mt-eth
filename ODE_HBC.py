@@ -42,7 +42,7 @@ class FCN(nn.Module):
 
 
 # define neural network to train
-pinn = FCN(1, 1, 32, 4)
+pinn = FCN(1, 1, 32, 2)
 
 # define points for the physics loss
 t_physics = torch.linspace(0, 2, 20).view(-1, 1).requires_grad_(True)
@@ -52,8 +52,8 @@ t_test = torch.linspace(0, 2, 200).view(-1, 1)
 f_x_exact = exact_solution(t_test)
 
 
-optimiser = torch.optim.Adam(pinn.parameters(), lr=1e-3)
-for i in range(1001):
+optimiser = torch.optim.Adam(pinn.parameters(), lr=7e-4)
+for i in range(5001):
     optimiser.zero_grad()
     # compute loss
     f_x = pinn(t_physics)
@@ -64,14 +64,13 @@ for i in range(1001):
     ]  # (30, 1)
     loss = torch.mean((df_xdx - f_x) ** 2)
 
-    # backpropagate joint loss, take optimiser step
-    loss = loss
+    # backpropagate loss, take optimiser step
     loss.backward()
     optimiser.step()
     # plot the result as training progresses
     if i % 100 == 0:
         print(loss)
-        if i % 1000 == 0:
+        if i % 5000 == 0:
             # print(u.abs().mean().item(), dudt.abs().mean().item(), d2udt2.abs().mean().item())
             f_x = pinn(t_test).detach()
             plt.figure(figsize=(6, 2.5))
