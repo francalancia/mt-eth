@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 
 torch.manual_seed(123)
 
@@ -80,8 +81,30 @@ def main():
     col_exact = torch.linspace(0, 1, 200).view(-1, 1)
     f_x_exact = exact_solution(col_exact)
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
+    # optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
+    optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
+
+    def closure():
+        # zero the gradients
+        optimiser.zero_grad()
+        # compute model output for the collocation points
+        f_x = pinn(col_points)
+        # compute the grad of the output w.r.t. to the collocation points
+        df_xdx = torch.autograd.grad(
+            f_x, col_points, torch.ones_like(f_x), create_graph=True
+        )[0]
+        # compute the loss mean squared error
+        loss = torch.mean((df_xdx - f_x) ** 2)
+        # backpropagate the loss
+        loss.backward()
+        # return the loss for the optimiser
+        return loss
+
+    # start = time.time()
+
     for i in range(5001):
+        loss = optimiser.step(closure)
+        """
         optimiser.zero_grad()
         # compute loss%
         f_x = pinn(col_points)
@@ -95,9 +118,14 @@ def main():
         # backpropagate loss, take optimiser step
         loss.backward()
         optimiser.step()
+        """
         if i % 5000 == 0:
             print(f"Loss at step {i}: {loss.item()}")
-            plot_solution(pinn, col_points, col_exact, f_x_exact, i)
+        #    plot_solution(pinn, col_points, col_exact, f_x_exact, i)
+
+    # end = time.time()
+    # elapsed = end - start
+    # print(f"Elapsed time: {elapsed}")
     return None
 
 
