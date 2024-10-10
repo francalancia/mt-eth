@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
-import time
+import tqdm
 
 torch.manual_seed(123)
 
@@ -72,7 +72,13 @@ class FCN(nn.Module):
 
 def main():
     # define neural network to train
-    pinn = FCN(1, 1, 32, 2)
+    n_input = 1
+    n_output = 1
+    n_hidden = 32
+    n_layers = 2
+    n_epochs = 5000
+    
+    pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
     # define collocation points
     col_points = torch.linspace(0, 1, 20).view(-1, 1).requires_grad_(True)
@@ -81,8 +87,8 @@ def main():
     col_exact = torch.linspace(0, 1, 200).view(-1, 1)
     f_x_exact = exact_solution(col_exact)
 
-    # optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
-    optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
+    #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
 
     def closure():
         # zero the gradients
@@ -99,33 +105,26 @@ def main():
         loss.backward()
         # return the loss for the optimiser
         return loss
+    with tqdm.trange(n_epochs) as pbar:
+        for _ in pbar:
+            #loss = optimiser.step(closure)
+            optimiser.zero_grad()
+            # compute loss%
+            f_x = pinn(col_points)
+            df_xdx = torch.autograd.grad(
+                f_x, col_points, torch.ones_like(f_x), create_graph=True
+            )[
+                0
+            ]  # (30, 1)
+            loss = torch.mean((df_xdx - f_x) ** 2)
 
-    # start = time.time()
-
-    for i in range(5001):
-        loss = optimiser.step(closure)
-        """
-        optimiser.zero_grad()
-        # compute loss%
-        f_x = pinn(col_points)
-        df_xdx = torch.autograd.grad(
-            f_x, col_points, torch.ones_like(f_x), create_graph=True
-        )[
-            0
-        ]  # (30, 1)
-        loss = torch.mean((df_xdx - f_x) ** 2)
-
-        # backpropagate loss, take optimiser step
-        loss.backward()
-        optimiser.step()
-        """
-        if i % 5000 == 0:
-            print(f"Loss at step {i}: {loss.item()}")
-        #    plot_solution(pinn, col_points, col_exact, f_x_exact, i)
-
-    # end = time.time()
-    # elapsed = end - start
-    # print(f"Elapsed time: {elapsed}")
+            # backpropagate loss, take optimiser step
+            loss.backward()
+            optimiser.step()
+            
+            pbar.set_postfix(loss=f"{loss.item():.4e}")
+    
+    plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs)
     return None
 
 
