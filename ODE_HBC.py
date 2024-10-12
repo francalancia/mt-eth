@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import tqdm
 
 torch.manual_seed(123)
-
+torch.set_default_dtype(torch.float64)
 
 def exact_solution(x):
     y = np.exp(x)
@@ -77,7 +77,7 @@ def main():
     n_hidden = 32
     n_layers = 2
     n_epochs = 5000
-    
+
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
     # define collocation points
@@ -87,8 +87,8 @@ def main():
     col_exact = torch.linspace(0, 1, 200).view(-1, 1)
     f_x_exact = exact_solution(col_exact)
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
-    #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
+    #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
+    optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
 
     def closure():
         # zero the gradients
@@ -105,10 +105,12 @@ def main():
         loss.backward()
         # return the loss for the optimiser
         return loss
+    
     with tqdm.trange(n_epochs) as pbar:
         for _ in pbar:
-            #loss = optimiser.step(closure)
-            optimiser.zero_grad()
+            loss = optimiser.step(closure)
+            """
+            # optimiser.zero_grad()
             # compute loss%
             f_x = pinn(col_points)
             df_xdx = torch.autograd.grad(
@@ -121,9 +123,9 @@ def main():
             # backpropagate loss, take optimiser step
             loss.backward()
             optimiser.step()
-            
+            """
             pbar.set_postfix(loss=f"{loss.item():.4e}")
-    
+
     plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs)
     return None
 
