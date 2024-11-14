@@ -2,5 +2,4 @@
 .venv/
 
 # Ignore KANN-file from Alexander
-kann_variants.py
 ode.pdf
