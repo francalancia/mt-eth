@@ -183,7 +183,7 @@ class KANN(torch.nn.Module):
     """KANN class with Lagrange polynomials."""
 
     def __init__(
-        self, n_width, n_order, n_elements, n_samples, x_min, x_max, regression
+        self, n_width, n_order, n_elements, n_samples, x_min, x_max, regression, autodiff
     ):
         """Initialize."""
         super(KANN, self).__init__()
@@ -195,6 +195,7 @@ class KANN(torch.nn.Module):
         self.x_min = x_min
         self.x_max = x_max
         self.regression = regression
+        self.autodiff = autodiff
 
         self.inner = LagrangeKANN(
             n_width, n_order, n_elements, n_samples, x_min, x_max
@@ -209,8 +210,9 @@ class KANN(torch.nn.Module):
         print(f"Order: {n_order}")
         print(f"Number of elements: {n_elements}")
         print(f"Nodes per width: {nodes_per_width}")
-        print(f"Samples: {n_samples}\n\n")
-
+        print(f"Samples: {n_samples}")
+        print(f"Regression: {regression}")
+        print(f"Autodiff: {autodiff}\n\n")
         return None
 
     def forward(self, x):
@@ -368,6 +370,7 @@ def main():
         x_min=x_min,
         x_max=x_max,
         regression=regression,
+        autodiff=autodiff,
     )
 
     with tqdm.trange(n_epochs) as pbar1:
