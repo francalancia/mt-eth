@@ -374,7 +374,7 @@ def main():
 
     values = torch.zeros((20,3))
 
-    for run in range(1):
+    for run in range(13):
         sample = 0 
         _ = 0 
         loss_mean = 0
@@ -483,6 +483,8 @@ def main():
         values[run,1] = l2
         values[run,2] = _
         tol = tol * 1e-2
+        
+    torch.save(values, "values.pt")
     print(values)
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
