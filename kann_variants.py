@@ -361,106 +361,118 @@ def main():
     else:
         y_i = torch.exp(x_i)
 
-    #initialize the model
-    model = KANN(
-        n_width=n_width,
-        n_order=n_order,
-        n_elements=n_elements,
-        n_samples=1,
-        x_min=x_min,
-        x_max=x_max,
-        regression=regression,
-        autodiff=autodiff,
-    )
-    with tqdm.trange(n_epochs) as pbar1:
-        for _ in pbar1:
-            lr_epoch = torch.zeros((n_samples,))
-            loss_epoch = torch.zeros((n_samples,))
-            # start looping over each training sample (50 times (0-49))
-            for sample in range(n_samples):
+    values = torch.zeros((20,3))
 
-                x = x_i[sample].unsqueeze(-1)
+    for run in range(13):
+        sample = 0 
+        _ = 0 
+        loss_mean = 0
+        #initialize the model
+        model = KANN(
+            n_width=n_width,
+            n_order=n_order,
+            n_elements=n_elements,
+            n_samples=1,
+            x_min=x_min,
+            x_max=x_max,
+            regression=regression,
+            autodiff=autodiff,
+        )
 
-                if regression is True:
+        with tqdm.trange(n_epochs) as pbar1:
+            for _ in pbar1:
+                lr_epoch = torch.zeros((n_samples,))
+                loss_epoch = torch.zeros((n_samples,))
+                # start looping over each training sample (50 times (0-49))
+                for sample in range(n_samples):
+
+                    x = x_i[sample].unsqueeze(-1)
+
+                    if regression is True:
+                        if autodiff is True:
+                            y = model(x)
+                            residual = y - y_i[sample].unsqueeze(-1)
+                            # residual = system["b"]
+                        else: # manual differentiation
+                            system = model.linear_system(x,y_i[sample])
+                            A_inner = system["A_inner"]
+                            A_outer = system["A_outer"]
+                            residual = system["b"]
+
+                    else:
+                        if autodiff is True:
+                            y = 1 + x * model(x)
+                            dydx = torch.autograd.grad(y, x, torch.ones_like(x), create_graph=True)[0]
+                            residual = dydx - y
+                        else:  
+                            system = model.linear_system(x,y_i[sample])
+                            A_inner = system["A_inner"]
+                            A_outer = system["A_outer"]
+                            residual = system["b"]
+
+                    loss = torch.mean(torch.square(residual))
+
                     if autodiff is True:
-                        y = model(x)
-                        residual = y - y_i[sample].unsqueeze(-1)
-                        # residual = system["b"]
-                    else: # manual differentiation
-                        system = model.linear_system(x,y_i[sample])
-                        A_inner = system["A_inner"]
-                        A_outer = system["A_outer"]
-                        residual = system["b"]
+                        g_lst = torch.autograd.grad(
+                            outputs=residual,
+                            inputs=model.parameters(),
+                        )
+                        #If you want to use gradient decent
+                        #g_lst = torch.autograd.grad(
+                        #    outputs=loss,
+                        #    inputs=model.parameters(),
+                        #)
 
-                else:
-                    if autodiff is True:
-                        y = 1 + x * model(x)
-                        dydx = torch.autograd.grad(y, x, torch.ones_like(x), create_graph=True)[0]
-                        residual = dydx - y
-                    else:  
-                        system = model.linear_system(x,y_i[sample])
-                        A_inner = system["A_inner"]
-                        A_outer = system["A_outer"]
-                        residual = system["b"]
+                        norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
 
-                loss = torch.mean(torch.square(residual))
+                    else:
+                        #if regression is True:
+                        #    raise NotImplementedError("For regression only AD!")
+                        g_lst = [A_inner, A_outer]
 
-                if autodiff is True:
-                    g_lst = torch.autograd.grad(
-                        outputs=residual,
-                        inputs=model.parameters(),
-                    )
-                    #If you want to use gradient decent
-                    #g_lst = torch.autograd.grad(
-                    #    outputs=loss,
-                    #    inputs=model.parameters(),
-                    #)
-
-                    norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
-
-                else:
-                    #if regression is True:
-                    #    raise NotImplementedError("For regression only AD!")
-                    g_lst = [A_inner, A_outer]
-
-                    norm = (
-                        torch.linalg.norm(A_inner) ** 2
-                        + torch.linalg.norm(A_outer) ** 2
-                    )
+                        norm = (
+                            torch.linalg.norm(A_inner) ** 2
+                            + torch.linalg.norm(A_outer) ** 2
+                        )
+                        
+                    # Kaczmarz update
+                    for p, g in zip(model.parameters(), g_lst):
+                        update = (residual / norm) * torch.squeeze(g)
+                        #update = 1e-3 * torch.squeeze(g)
+                        p.data -= update
                     
-                # Kaczmarz update
-                for p, g in zip(model.parameters(), g_lst):
-                    update = (residual / norm) * torch.squeeze(g)
-                    #update = 1e-3 * torch.squeeze(g)
-                    p.data -= update
-                
-                #lr_epoch[sample] = lr
-                loss_epoch[sample] = loss
+                    #lr_epoch[sample] = lr
+                    loss_epoch[sample] = loss
 
-            loss_mean = torch.mean(loss_epoch)
-            loss_str = f"{loss_mean.item():0.4e}"
+                loss_mean = torch.mean(loss_epoch)
+                loss_str = f"{loss_mean.item():0.4e}"
 
-            pbar1.set_postfix(loss=loss_str)
+                pbar1.set_postfix(loss=loss_str)
 
-            if loss_mean.item() < tol:
-                break
-        
+                if loss_mean.item() < tol:
+                    break
+            
 
 
-        #calculate final result of the model and the plot            
-    y_hat = torch.zeros_like(x_i)
-    for sample in range(n_samples):
-        x = x_i[sample].unsqueeze(-1)
+            #calculate final result of the model and the plot            
+        y_hat = torch.zeros_like(x_i)
+        for sample in range(n_samples):
+            x = x_i[sample].unsqueeze(-1)
 
-        if regression is True:
-            y_hat[sample] = model(x)
+            if regression is True:
+                y_hat[sample] = model(x)
 
-        else:
-            y_hat[sample] = 1 + x * model(x) 
+            else:
+                y_hat[sample] = 1 + x * model(x) 
 
-    l2 = torch.linalg.norm(y_i - y_hat)
-    print(f"\nL2-error: {l2.item():0.4e}")
-
+        l2 = torch.linalg.norm(y_i - y_hat)
+        print(f"\nL2-error: {l2.item():0.4e}")
+        print(f"\n run at iteration {run}")
+        values[run,0] = tol
+        values[run,1] = l2
+        values[run,2] = _
+        tol = tol * 1e-2
+    print(values)
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
     plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
