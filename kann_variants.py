@@ -3,6 +3,7 @@
 import matplotlib.pyplot as plt
 import torch
 import tqdm
+import parameters
 
 #set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
@@ -335,14 +336,24 @@ def disc_osc(x):
 
 def main():
     """Execute main routine."""
-    n_width = 10
-    n_order = 1
-    n_samples = 40
+    n_width = parameters.n_width
+    n_order = parameters.n_order
+    n_samples = parameters.n_samples
     n_elements = int((n_samples - 2) / n_order)
-    n_epochs = 2000
-    tol = 1e-6
+    n_epochs = parameters.n_epochs
+    tol = parameters.tol
+    autodiff = parameters.autodiff
+    regression = parameters.regression
+    """
+    n_width = 5
+    n_order = 1
+    n_samples = 20
+    n_elements = int((n_samples - 2) / n_order)
+    n_epochs = 4000
+    tol = 1e-30
     autodiff = True
     regression = True
+    """
     if regression is True:
         x_min = -1.0
     else:
@@ -363,7 +374,7 @@ def main():
 
     values = torch.zeros((20,3))
 
-    for run in range(13):
+    for run in range(1):
         sample = 0 
         _ = 0 
         loss_mean = 0
