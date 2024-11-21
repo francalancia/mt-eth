@@ -371,10 +371,11 @@ def main():
             y_i[sample] = disc_osc(x_i[sample])
     else:
         y_i = torch.exp(x_i)
+        
+    runs = 13
+    values = torch.zeros((runs,4))
 
-    values = torch.zeros((13,3))
-
-    for run in range(13):
+    for run in range(runs):
         sample = 0 
         _ = 0 
         loss_mean = 0
@@ -461,8 +462,9 @@ def main():
                 pbar1.set_postfix(loss=loss_str)
 
                 if loss_mean.item() < tol:
+                    values[run,3] = pbar1.format_dict['elapsed']
                     break
-            
+        print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")    
 
 
             #calculate final result of the model and the plot            
@@ -478,13 +480,17 @@ def main():
 
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"\nL2-error: {l2.item():0.4e}")
-        print(f"\n run at iteration {run}")
+        print(f"\n run at iteration {run+1}")
         values[run,0] = tol
         values[run,1] = l2
         values[run,2] = _
         tol = tol * 1e-2
         
-    print(values)
+    print(values[:,0])
+    print(values[:,1])
+    print(values[:,2])
+    print(values[:,3])
+    
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
     plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
