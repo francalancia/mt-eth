@@ -335,7 +335,7 @@ def disc_osc(x):
 
 def main():
     """Execute main routine."""
-    n_width = 2
+    n_width = 90
     n_order = 1
     n_samples = 40
     n_elements = int((n_samples - 2) / n_order)
