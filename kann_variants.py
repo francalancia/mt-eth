@@ -372,9 +372,9 @@ def main():
     else:
         y_i = torch.exp(x_i)
 
-    values = torch.zeros((20,3))
+    values = torch.zeros((13,3))
 
-    for run in range(1):
+    for run in range(13):
         sample = 0 
         _ = 0 
         loss_mean = 0
