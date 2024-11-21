@@ -335,14 +335,14 @@ def disc_osc(x):
 
 def main():
     """Execute main routine."""
-    n_width = 10
+    n_width = 2
     n_order = 1
     n_samples = 40
     n_elements = int((n_samples - 2) / n_order)
     n_epochs = 1000
-    tol = 1e-32
-    autodiff = False
-    regression = False
+    tol = 1e-6
+    autodiff = True
+    regression = True
     if regression is True:
         x_min = -1.0
     else:
