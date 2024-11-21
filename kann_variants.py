@@ -335,11 +335,11 @@ def disc_osc(x):
 
 def main():
     """Execute main routine."""
-    n_width = 90
+    n_width = 10
     n_order = 1
     n_samples = 40
     n_elements = int((n_samples - 2) / n_order)
-    n_epochs = 1000
+    n_epochs = 2000
     tol = 1e-6
     autodiff = True
     regression = True
@@ -372,7 +372,6 @@ def main():
         regression=regression,
         autodiff=autodiff,
     )
-
     with tqdm.trange(n_epochs) as pbar1:
         for _ in pbar1:
             lr_epoch = torch.zeros((n_samples,))
@@ -445,8 +444,10 @@ def main():
 
             if loss_mean.item() < tol:
                 break
+        
 
-    #calculate final result of the model and the plot            
+
+        #calculate final result of the model and the plot            
     y_hat = torch.zeros_like(x_i)
     for sample in range(n_samples):
         x = x_i[sample].unsqueeze(-1)
