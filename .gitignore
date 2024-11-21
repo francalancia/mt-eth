@@ -4,4 +4,5 @@
 # Ignore KANN-file from Alexander
 ode.pdf
 
+# Ignore parameters file
 parameters.py
