@@ -372,7 +372,7 @@ def main():
     else:
         y_i = torch.exp(x_i)
         
-    runs = 13
+    runs = 1
     values = torch.zeros((runs,4))
 
     for run in range(runs):
