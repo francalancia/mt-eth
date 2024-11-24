@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 import tqdm
 import parameters
+import pandas as pd
 
 #set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
@@ -353,8 +354,8 @@ def main():
     autodiff = True
     regression = True
     """
-    runs = 15
-    values = torch.zeros((runs,5))
+    runs = 1
+    values = torch.zeros((runs,7))
 
     for run in range(runs):
         n_elements = int((n_samples - 2) / n_order)
@@ -462,7 +463,7 @@ def main():
                 pbar1.set_postfix(loss=loss_str)
 
                 if loss_mean.item() < tol:
-                    values[run,4] = pbar1.format_dict['elapsed']
+                    values[run,6] = pbar1.format_dict['elapsed']
                     break
         print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")    
 
@@ -481,16 +482,19 @@ def main():
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"\nL2-error: {l2.item():0.4e}")
         print(f"\n run at iteration {run+1}")
-        values[run,0] = tol
-        values[run,1] = loss_mean.item()
-        values[run,2] = l2
-        values[run,3] = _
+        #how many samples, width, order, tol, l2-error,  which epoch, runtinme
+        values[run,0] = n_samples
+        values[run,1] = n_width
+        values[run,2] = n_order
+        values[run,3] = tol
+        values[run,4] = l2
+        values[run,5] = _
         n_samples = n_samples + 10  
               
-    print(values[:,0])
-    print(values[:,1])
-    print(values[:,2])
-    print(values[:,3])
+    #print(values[:,0])
+    #print(values[:,1])
+    #print(values[:,2])
+    #print(values[:,3])
     
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
@@ -499,6 +503,12 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig("ode.pdf")
+    
+    np_array = values.detach().numpy()
+    df = pd.DataFrame(np_array)
+    ex_file = "values.xlsx"
+    df.to_excel(ex_file, index=False, header=["n_samples", "n_width", "n_order", "tol", "l2-error", "epoch", "runtime"])
+    print("Values saved to excel file")
 
     return None
 
