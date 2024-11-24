@@ -339,7 +339,6 @@ def main():
     n_width = parameters.n_width
     n_order = parameters.n_order
     n_samples = parameters.n_samples
-    n_elements = int((n_samples - 2) / n_order)
     n_epochs = parameters.n_epochs
     tol = parameters.tol
     autodiff = parameters.autodiff
@@ -354,28 +353,29 @@ def main():
     autodiff = True
     regression = True
     """
-    if regression is True:
-        x_min = -1.0
-    else:
-        x_min = 0.0
-    x_max = 1.0
-    
-    # vector of n_samples from x_min to x_max
-    x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
-
-    # create sample data
-    if regression is True:
-        # y - vec with n_samples entries
-        y_i = torch.zeros_like(x_i)
-        for sample in range(n_samples):
-            y_i[sample] = disc_osc(x_i[sample])
-    else:
-        y_i = torch.exp(x_i)
-        
-    runs = 1
-    values = torch.zeros((runs,4))
+    runs = 15
+    values = torch.zeros((runs,5))
 
     for run in range(runs):
+        n_elements = int((n_samples - 2) / n_order)
+        if regression is True:
+            x_min = -1.0
+        else:
+            x_min = 0.0
+        x_max = 1.0
+        
+        # vector of n_samples from x_min to x_max
+        x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
+
+        # create sample data
+        if regression is True:
+            # y - vec with n_samples entries
+            y_i = torch.zeros_like(x_i)
+            for sample in range(n_samples):
+                y_i[sample] = disc_osc(x_i[sample])
+        else:
+            y_i = torch.exp(x_i)
+            
         sample = 0 
         _ = 0 
         loss_mean = 0
@@ -462,7 +462,7 @@ def main():
                 pbar1.set_postfix(loss=loss_str)
 
                 if loss_mean.item() < tol:
-                    values[run,3] = pbar1.format_dict['elapsed']
+                    values[run,4] = pbar1.format_dict['elapsed']
                     break
         print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")    
 
@@ -482,10 +482,11 @@ def main():
         print(f"\nL2-error: {l2.item():0.4e}")
         print(f"\n run at iteration {run+1}")
         values[run,0] = tol
-        values[run,1] = l2
-        values[run,2] = _
-        tol = tol * 1e-2
-        
+        values[run,1] = loss_mean.item()
+        values[run,2] = l2
+        values[run,3] = _
+        n_samples = n_samples + 10  
+              
     print(values[:,0])
     print(values[:,1])
     print(values[:,2])
