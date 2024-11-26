@@ -354,8 +354,8 @@ def main():
     autodiff = True
     regression = True
     """
-    runs = 1
-    values = torch.zeros((runs,7))
+    runs = 20
+    values = torch.zeros((runs,8))
 
     for run in range(runs):
         n_elements = int((n_samples - 2) / n_order)
@@ -487,8 +487,10 @@ def main():
         values[run,1] = n_width
         values[run,2] = n_order
         values[run,3] = tol
-        values[run,4] = l2
-        values[run,5] = _
+        values[run,4] = loss_mean
+        values[run,5] = l2
+        values[run,6] = _
+        values[run,7] = pbar1.format_dict['elapsed']
         n_samples = n_samples + 10  
               
     #print(values[:,0])
@@ -506,8 +508,8 @@ def main():
     
     np_array = values.detach().numpy()
     df = pd.DataFrame(np_array)
-    ex_file = "values.xlsx"
-    df.to_excel(ex_file, index=False, header=["n_samples", "n_width", "n_order", "tol", "l2-error", "epoch", "runtime"])
+    ex_file = "values_samples_autoreg.xlsx"
+    df.to_excel(ex_file, index=False, header=["n_samples", "n_width", "n_order", "tol","loss_mean" ,"l2-error", "epoch", "runtime"])
     print("Values saved to excel file")
 
     return None
