@@ -344,6 +344,7 @@ def main():
     tol = parameters.tol
     autodiff = parameters.autodiff
     regression = parameters.regression
+    runs = parameters.runs
     """
     n_width = 5
     n_order = 1
@@ -354,10 +355,13 @@ def main():
     autodiff = True
     regression = True
     """
-    runs = 20
     values = torch.zeros((runs,8))
 
     for run in range(runs):
+        stopping_epoch = None
+        same_loss_counter = 0
+        previous_loss = 0
+        
         n_elements = int((n_samples - 2) / n_order)
         if regression is True:
             x_min = -1.0
@@ -461,12 +465,21 @@ def main():
                 loss_str = f"{loss_mean.item():0.4e}"
 
                 pbar1.set_postfix(loss=loss_str)
-
+                if loss_mean.item() >= previous_loss:
+                    same_loss_counter += 1
+                else:
+                    same_loss_counter = 0
+                
+                previous_loss = loss_mean.item()
+                if same_loss_counter >= 40:
+                    values[run,6] = pbar1.format_dict['elapsed']
+                    break
                 if loss_mean.item() < tol:
                     values[run,6] = pbar1.format_dict['elapsed']
                     break
         print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")    
-
+        if same_loss_counter > 20:
+            print(f"Same loss counter: {same_loss_counter}")
 
             #calculate final result of the model and the plot            
         y_hat = torch.zeros_like(x_i)
@@ -491,7 +504,7 @@ def main():
         values[run,5] = l2
         values[run,6] = _
         values[run,7] = pbar1.format_dict['elapsed']
-        n_samples = n_samples + 10  
+        n_samples = n_samples +5  
               
     #print(values[:,0])
     #print(values[:,1])
@@ -508,7 +521,7 @@ def main():
     
     np_array = values.detach().numpy()
     df = pd.DataFrame(np_array)
-    ex_file = "values_samples_autoreg.xlsx"
+    ex_file = "values_test_manODE.xlsx"
     df.to_excel(ex_file, index=False, header=["n_samples", "n_width", "n_order", "tol","loss_mean" ,"l2-error", "epoch", "runtime"])
     print("Values saved to excel file")
 
