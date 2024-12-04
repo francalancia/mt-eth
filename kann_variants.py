@@ -6,7 +6,7 @@ import tqdm
 import parameters
 import pandas as pd
 
-#set the default data type for tensors to double precision
+# set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
 
 
@@ -26,10 +26,10 @@ class LagrangeKANN(torch.nn.Module):
 
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
-            #torch.ones((self.n_width, self.n_nodes))
-            #torch.empty((self.n_width, self.n_nodes))
+            # torch.ones((self.n_width, self.n_nodes))
+            # torch.empty((self.n_width, self.n_nodes))
         )
-        #torch.nn.init.xavier_normal_(self.weight)
+        # torch.nn.init.xavier_normal_(self.weight)
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -100,9 +100,7 @@ class LagrangeKANN(torch.nn.Module):
                             k_prod = torch.ones_like(x) / (nodes[j] - nodes[m])
                             for n in range(n_order + 1):
                                 if n != i and n != j and n != m:
-                                    k_prod *= (x - nodes[n]) / (
-                                        nodes[j] - nodes[n]
-                                    )
+                                    k_prod *= (x - nodes[n]) / (nodes[j] - nodes[n])
                             k_sum += k_prod
                     y += (1 / (nodes[j] - nodes[i])) * k_sum
             ddp_list[:, :, j] = y
@@ -113,12 +111,10 @@ class LagrangeKANN(torch.nn.Module):
         """Transform to reference base."""
         return (x - (0.5 * (node_l + node_r))) / (0.5 * (node_r - node_l))
 
-    #unsure for the meaning of the following function (do we shift from -1 to 1 range to 0 to 49 range?)
+    # unsure for the meaning of the following function (do we shift from -1 to 1 range to 0 to 49 range?)
     def to_shift(self, x):
         """Shift from real line to natural line."""
-        x_shift = (
-            (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
-        )
+        x_shift = (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
         return x_shift
 
     def forward(self, x):
@@ -129,18 +125,16 @@ class LagrangeKANN(torch.nn.Module):
         x_shift = self.to_shift(x)
 
         id_element_in = torch.floor(x_shift / self.n_order)
-        #ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
+        # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
         id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
         id_element_in[id_element_in < 0] = 0
 
-        #what is the meaning of the following lines?
+        # what is the meaning of the following lines?
         nodes_in_l = (id_element_in * self.n_order).to(int)
         nodes_in_r = (nodes_in_l + self.n_order).to(int)
 
         x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
-        delta_x = (
-            0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
-        )
+        delta_x = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
 
         delta_x_1st = delta_x
         delta_x_2nd = delta_x**2
@@ -152,19 +146,19 @@ class LagrangeKANN(torch.nn.Module):
         phi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
         dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
         ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        
+
         for sample in range(self.n_samples):
             for layer in range(self.n_width):
                 for node in range(self.n_order + 1):
-                    phi_ikp[
-                        sample, layer, nodes_in_l[sample, layer] + node
-                        ] = phi_local_ikp[sample, layer, node]
-                    dphi_ikp[
-                        sample, layer, nodes_in_l[sample, layer] + node
-                    ] = (dphi_local_ikp[sample, layer, node] / delta_x_1st)
-                    ddphi_ikp[
-                        sample, layer, nodes_in_l[sample, layer] + node
-                    ] = (ddphi_local_ikp[sample, layer, node] / delta_x_2nd)
+                    phi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                        phi_local_ikp[sample, layer, node]
+                    )
+                    dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                        dphi_local_ikp[sample, layer, node] / delta_x_1st
+                    )
+                    ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                        ddphi_local_ikp[sample, layer, node] / delta_x_2nd
+                    )
 
         t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_ikp)
         dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
@@ -185,7 +179,15 @@ class KANN(torch.nn.Module):
     """KANN class with Lagrange polynomials."""
 
     def __init__(
-        self, n_width, n_order, n_elements, n_samples, x_min, x_max, regression, autodiff
+        self,
+        n_width,
+        n_order,
+        n_elements,
+        n_samples,
+        x_min,
+        x_max,
+        regression,
+        autodiff,
     ):
         """Initialize."""
         super(KANN, self).__init__()
@@ -199,12 +201,8 @@ class KANN(torch.nn.Module):
         self.regression = regression
         self.autodiff = autodiff
 
-        self.inner = LagrangeKANN(
-            n_width, n_order, n_elements, n_samples, x_min, x_max
-        )
-        self.outer = LagrangeKANN(
-            n_width, n_order, n_elements, n_samples, x_min, x_max
-        )
+        self.inner = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
+        self.outer = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
 
         total_params = sum(p.numel() for p in self.parameters())
         nodes_per_width = n_elements * n_order + 1
@@ -219,7 +217,7 @@ class KANN(torch.nn.Module):
 
     def forward(self, x):
         """Forward pass for whole batch."""
-        # inner and outer seem to be identical
+        
         x = self.inner(x)["t_ik"]
         x = self.outer(x)["t_ik"]
 
@@ -232,7 +230,7 @@ class KANN(torch.nn.Module):
         if self.regression is True:
             y = self.forward(x)
             residual = y - y_true
-            
+
         else:
             y = 1 + x * self.forward(x)
 
@@ -252,22 +250,22 @@ class KANN(torch.nn.Module):
 
         return residual
 
-    def linear_system(self, x,y_true):
+    def linear_system(self, x, y_true):
         """Compute Ax=b."""
-        b = self.residual(x,y_true)
+        b = self.residual(x, y_true)
         if self.regression is True:
             inner_dict = self.inner(x)
             outer_dict = self.outer(inner_dict["t_ik"])
-            
+
             inner_phi_ikp = inner_dict["phi_ikp"]
-            
+
             outer_dt_ik = outer_dict["dt_ik"]
             outer_phi_ikl = outer_dict["phi_ikp"]
-            
+
             A_outer = torch.einsum("ikl -> ikl", outer_phi_ikl)
-            
+
             A_inner = torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-            
+
         else:
             inner_dict = self.inner(x)
             outer_dict = self.outer(inner_dict["t_ik"])
@@ -311,7 +309,7 @@ def diff(x, y, order):
         torch.ones_like(x),
         create_graph=True,
     )[0]
-    '''
+    """
     for i in range(1, order):
         dxdy = torch.autograd.grad(
             dxdy,
@@ -319,7 +317,7 @@ def diff(x, y, order):
             torch.ones_like(x),
             create_graph=True,
         )[0]
-    '''
+    """
     return dxdy
 
 
@@ -355,20 +353,20 @@ def main():
     autodiff = True
     regression = True
     """
-    values = torch.zeros((runs,8))
+    values = torch.zeros((runs, 8))
 
     for run in range(runs):
-        stopping_epoch = None
+        
         same_loss_counter = 0
         previous_loss = 0
-        
+
         n_elements = int((n_samples - 2) / n_order)
         if regression is True:
             x_min = -1.0
         else:
             x_min = 0.0
         x_max = 1.0
-        
+
         # vector of n_samples from x_min to x_max
         x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
 
@@ -380,11 +378,11 @@ def main():
                 y_i[sample] = disc_osc(x_i[sample])
         else:
             y_i = torch.exp(x_i)
-            
-        sample = 0 
-        _ = 0 
+
+        sample = 0
+        _ = 0
         loss_mean = 0
-        #initialize the model
+        # initialize the model
         model = KANN(
             n_width=n_width,
             n_order=n_order,
@@ -410,19 +408,19 @@ def main():
                             y = model(x)
                             residual = y - y_i[sample].unsqueeze(-1)
                             # residual = system["b"]
-                        else: # manual differentiation
-                            system = model.linear_system(x,y_i[sample])
-                            A_inner = system["A_inner"]
-                            A_outer = system["A_outer"]
-                            residual = system["b"]
+                        else:  # manual differentiation
+                            system = model.linear_system(x, y_i[sample])
+                            A_inner, A_outer, residual = system["A_inner"], system["A_outer"], system["b"]
 
                     else:
                         if autodiff is True:
                             y = 1 + x * model(x)
-                            dydx = torch.autograd.grad(y, x, torch.ones_like(x), create_graph=True)[0]
+                            dydx = torch.autograd.grad(
+                                y, x, torch.ones_like(x), create_graph=True
+                            )[0]
                             residual = dydx - y
-                        else:  
-                            system = model.linear_system(x,y_i[sample])
+                        else:
+                            system = model.linear_system(x, y_i[sample])
                             A_inner = system["A_inner"]
                             A_outer = system["A_outer"]
                             residual = system["b"]
@@ -434,16 +432,16 @@ def main():
                             outputs=residual,
                             inputs=model.parameters(),
                         )
-                        #If you want to use gradient decent
-                        #g_lst = torch.autograd.grad(
+                        # If you want to use gradient decent
+                        # g_lst = torch.autograd.grad(
                         #    outputs=loss,
                         #    inputs=model.parameters(),
-                        #)
+                        # )
 
                         norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
 
                     else:
-                        #if regression is True:
+                        # if regression is True:
                         #    raise NotImplementedError("For regression only AD!")
                         g_lst = [A_inner, A_outer]
 
@@ -451,14 +449,14 @@ def main():
                             torch.linalg.norm(A_inner) ** 2
                             + torch.linalg.norm(A_outer) ** 2
                         )
-                        
+
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
                         update = (residual / norm) * torch.squeeze(g)
-                        #update = 1e-3 * torch.squeeze(g)
+                        # update = 1e-3 * torch.squeeze(g)
                         p.data -= update
-                    
-                    #lr_epoch[sample] = lr
+
+                    # lr_epoch[sample] = lr
                     loss_epoch[sample] = loss
 
                 loss_mean = torch.mean(loss_epoch)
@@ -469,19 +467,19 @@ def main():
                     same_loss_counter += 1
                 else:
                     same_loss_counter = 0
-                
+
                 previous_loss = loss_mean.item()
                 if same_loss_counter >= 40:
-                    values[run,6] = pbar1.format_dict['elapsed']
+                    values[run, 6] = pbar1.format_dict["elapsed"]
                     break
                 if loss_mean.item() < tol:
-                    values[run,6] = pbar1.format_dict['elapsed']
+                    values[run, 6] = pbar1.format_dict["elapsed"]
                     break
-        print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")    
+        print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
 
-            #calculate final result of the model and the plot            
+            # calculate final result of the model and the plot
         y_hat = torch.zeros_like(x_i)
         for sample in range(n_samples):
             x = x_i[sample].unsqueeze(-1)
@@ -490,27 +488,27 @@ def main():
                 y_hat[sample] = model(x)
 
             else:
-                y_hat[sample] = 1 + x * model(x) 
+                y_hat[sample] = 1 + x * model(x)
 
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"\nL2-error: {l2.item():0.4e}")
         print(f"\n run at iteration {run+1}")
-        #how many samples, width, order, tol, l2-error,  which epoch, runtinme
-        values[run,0] = n_samples
-        values[run,1] = n_width
-        values[run,2] = n_order
-        values[run,3] = tol
-        values[run,4] = loss_mean
-        values[run,5] = l2
-        values[run,6] = _
-        values[run,7] = pbar1.format_dict['elapsed']
-        n_samples = n_samples +5  
-              
-    #print(values[:,0])
-    #print(values[:,1])
-    #print(values[:,2])
-    #print(values[:,3])
-    
+        # how many samples, width, order, tol, l2-error,  which epoch, runtinme
+        values[run, 0] = n_samples
+        values[run, 1] = n_width
+        values[run, 2] = n_order
+        values[run, 3] = tol
+        values[run, 4] = loss_mean
+        values[run, 5] = l2
+        values[run, 6] = _
+        values[run, 7] = pbar1.format_dict["elapsed"]
+        n_samples = n_samples + 5
+
+    # print(values[:,0])
+    # print(values[:,1])
+    # print(values[:,2])
+    # print(values[:,3])
+
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
     plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
@@ -518,11 +516,24 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig("ode.pdf")
-    
+
     np_array = values.detach().numpy()
     df = pd.DataFrame(np_array)
-    ex_file = "values_test_manODE.xlsx"
-    df.to_excel(ex_file, index=False, header=["n_samples", "n_width", "n_order", "tol","loss_mean" ,"l2-error", "epoch", "runtime"])
+    ex_file = "values_test_manreg.xlsx"
+    df.to_excel(
+        ex_file,
+        index=False,
+        header=[
+            "n_samples",
+            "n_width",
+            "n_order",
+            "tol",
+            "loss_mean",
+            "l2-error",
+            "epoch",
+            "runtime",
+        ],
+    )
     print("Values saved to excel file")
 
     return None
