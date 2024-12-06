@@ -9,4 +9,4 @@ parameters.py
 __pycache__/
 
 # Ignore data files
-.xlsx
+*.xlsx
