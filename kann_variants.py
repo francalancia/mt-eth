@@ -743,7 +743,7 @@ def main():
     autodiff = True
     regression = True
     """
-    values = torch.zeros((runs, 8))
+    values = torch.zeros((runs, 9))
 
     for run in range(runs):
         print(f"\nrun at iteration {run+1}")
@@ -853,6 +853,8 @@ def main():
                 if loss_mean.item() < tol:
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
+                Tickrate = pbar1.format_dict['rate']
+            
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
@@ -879,7 +881,8 @@ def main():
         values[run, 5] = l2
         values[run, 6] = _
         values[run, 7] = pbar1.format_dict["elapsed"]
-        n_samples = n_samples + 5
+        values[run, 8] = Tickrate
+        #n_samples = n_samples + 5
 
     # print(values[:,0])
     # print(values[:,1])
@@ -897,14 +900,18 @@ def main():
     np_array = values.detach().numpy()
     df = pd.DataFrame(np_array)
     if autodiff:
-        exc_file_n1 = "auto"
+        exc_file_n1 = "auto_"
     else:
-        exc_file_n1 = "man"
+        exc_file_n1 = "man_"
     if regression:
         exc_file_n2 = "reg.xlsx"
     else:
         exc_file_n2 = "ode.xlsx"
-    exc_file = "values_" + exc_file_n1 + exc_file_n2
+    if speedup:
+        exc_file_n3 = "speedup_"
+    else:
+        exc_file_n3 = "no_speedup_"
+    exc_file = "values_" + exc_file_n1 +exc_file_n3 + exc_file_n2
     df.to_excel(
         exc_file,
         index=False,
@@ -917,6 +924,7 @@ def main():
             "l2-error",
             "epoch",
             "runtime",
+            "tickrate",
         ],
     )
     print(f"Values saved to excel file: {exc_file}")
