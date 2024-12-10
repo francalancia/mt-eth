@@ -354,6 +354,7 @@ def main():
     regression = True
     """
     values = torch.zeros((runs, 8))
+    Loss_tracking = torch.zeros((1, n_epochs))
 
     for run in range(runs):
         
@@ -475,6 +476,8 @@ def main():
                 if loss_mean.item() < tol:
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
+                
+                Loss_tracking[0, _] = loss_mean
         print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
