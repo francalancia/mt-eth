@@ -892,6 +892,49 @@ def disc_osc(x):
 
     return y
 
+def save_excel(values, autodiff, regression, speedup):
+    
+    np_array = values.detach().numpy()
+    df = pd.DataFrame(np_array)
+    if values.shape[1] == 9:
+        if autodiff:
+            exc_file_n1 = "auto_"
+        else:
+            exc_file_n1 = "man_"
+        if regression:
+            exc_file_n2 = "reg.xlsx"
+        else:
+            exc_file_n2 = "ode.xlsx"
+        if speedup:
+            exc_file_n3 = "speedup_"
+        else:
+            exc_file_n3 = "no_speedup_"
+        exc_file = "values_" + exc_file_n1 +exc_file_n3 + exc_file_n2
+        df.to_excel(
+            exc_file,
+            index=False,
+            header=[
+                "n_samples",
+                "n_width",
+                "n_order",
+                "tol",
+                "loss_mean",
+                "l2-error",
+                "epoch",
+                "runtime",
+                "tickrate",
+            ],
+        )
+    else:
+        exc_file = "values_losstracking.xlsx" 
+        df.to_excel(
+            exc_file,
+            index=False,
+            header=["epochs", "loss_mean"],
+        ) 
+    print(f"Values saved to excel file: {exc_file}")
+
+    return None
 def main():
     """Execute main routine."""
     n_width = parameters.n_width
@@ -914,7 +957,9 @@ def main():
     regression = True
     """
     values = torch.zeros((runs, 9))
-
+    loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
+    rval = 0
+    
     for run in range(runs):
         print(f"\nrun at iteration {run+1}")
         same_loss_counter = 0
@@ -1024,6 +1069,13 @@ def main():
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
                 Tickrate = pbar1.format_dict['rate']
+                
+                if _ == 0 or _ % 10 == 0:
+                    loss_tracking[rval,0] = _
+                    loss_tracking[rval,1] = loss_mean
+                    rval += 1
+        loss_tracking[rval,0] = _
+        loss_tracking[rval,1] = loss_mean
             
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
@@ -1054,11 +1106,6 @@ def main():
         values[run, 8] = Tickrate
         #n_samples = n_samples + 5
 
-    # print(values[:,0])
-    # print(values[:,1])
-    # print(values[:,2])
-    # print(values[:,3])
-
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
     plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
@@ -1067,38 +1114,9 @@ def main():
     plt.tight_layout()
     plt.savefig("ode.pdf")
 
-    np_array = values.detach().numpy()
-    df = pd.DataFrame(np_array)
-    if autodiff:
-        exc_file_n1 = "auto_"
-    else:
-        exc_file_n1 = "man_"
-    if regression:
-        exc_file_n2 = "reg.xlsx"
-    else:
-        exc_file_n2 = "ode.xlsx"
-    if speedup:
-        exc_file_n3 = "speedup_"
-    else:
-        exc_file_n3 = "no_speedup_"
-    exc_file = "values_" + exc_file_n1 +exc_file_n3 + exc_file_n2
-    df.to_excel(
-        exc_file,
-        index=False,
-        header=[
-            "n_samples",
-            "n_width",
-            "n_order",
-            "tol",
-            "loss_mean",
-            "l2-error",
-            "epoch",
-            "runtime",
-            "tickrate",
-        ],
-    )
-    print(f"Values saved to excel file: {exc_file}")
-
+    save_excel(values, autodiff, regression, speedup)
+    save_excel(loss_tracking, autodiff, regression, speedup)
+    
     return None
 
 if __name__ == "__main__":
