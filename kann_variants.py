@@ -332,6 +332,29 @@ def disc_osc(x):
 
     return y
 
+def save_to_excel(values, autodiff, regression):
+    np_array = values.detach().numpy()
+    df = pd.DataFrame(np_array)
+    if values.shape[1] == 8:
+        ex_file = "values_test_manreg.xlsx"
+        df.to_excel(
+            ex_file,
+            index=False,
+            header=[
+                "n_samples",
+                "n_width",
+                "n_order",
+                "tol",
+                "loss_mean",
+                "l2-error",
+                "epoch",
+                "runtime",
+            ],
+        )
+    else:
+        ex_file = "loss_tracking.xlsx"
+        df.to_excel(ex_file, index=False, header=["epoch","loss"])
+    return None
 
 def main():
     """Execute main routine."""
@@ -354,8 +377,8 @@ def main():
     regression = True
     """
     values = torch.zeros((runs, 8))
-    Loss_tracking = torch.zeros((1, n_epochs))
-
+    Loss_tracking = torch.zeros((int(n_epochs/10+1),2))
+    rval = 0
     for run in range(runs):
         
         same_loss_counter = 0
@@ -477,7 +500,12 @@ def main():
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
                 
-                Loss_tracking[0, _] = loss_mean
+                if _ == 0 or _ % 10 == 0:
+                    Loss_tracking[rval, 0] = loss_mean
+                    Loss_tracking[rval, 1] = _
+                    rval += 1
+            Loss_tracking[rval, 0] = loss_mean
+            Loss_tracking[rval, 1] = _
         print(f"Total Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
@@ -507,11 +535,6 @@ def main():
         values[run, 7] = pbar1.format_dict["elapsed"]
         n_samples = n_samples + 5
 
-    # print(values[:,0])
-    # print(values[:,1])
-    # print(values[:,2])
-    # print(values[:,3])
-
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
     plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
@@ -520,23 +543,9 @@ def main():
     plt.tight_layout()
     plt.savefig("ode.pdf")
 
-    np_array = values.detach().numpy()
-    df = pd.DataFrame(np_array)
-    ex_file = "values_test_manreg.xlsx"
-    df.to_excel(
-        ex_file,
-        index=False,
-        header=[
-            "n_samples",
-            "n_width",
-            "n_order",
-            "tol",
-            "loss_mean",
-            "l2-error",
-            "epoch",
-            "runtime",
-        ],
-    )
+    save_to_excel(values, autodiff, regression)
+    save_to_excel(Loss_tracking, autodiff, regression)
+
     print("Values saved to excel file")
 
     return None
