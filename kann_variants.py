@@ -314,11 +314,9 @@ class LagrangeKANNinnerODE(torch.nn.Module):
                     self.ddphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
                         ddphi_local_ikp[0, layer, node] / delta_x_2nd
                     )
-         
-        with torch.no_grad():
-            phi_cut = self.phi_ikp_inner[sample:(sample+1), :, :]
-            dphi_cut = self.dphi_ikp_inner[sample:(sample+1), :, :]
-            ddphi_cut = self.ddphi_ikp_inner[sample:(sample+1), :, :]
+        phi_cut = self.phi_ikp_inner[sample:(sample+1), :, :]
+        dphi_cut = self.dphi_ikp_inner[sample:(sample+1), :, :]
+        ddphi_cut = self.ddphi_ikp_inner[sample:(sample+1), :, :]
 
         t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_cut)
         dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_cut)
@@ -892,7 +890,7 @@ def disc_osc(x):
 
     return y
 
-def save_excel(values, autodiff, regression, speedup):
+def save_excel(values, autodiff, regression, speedup, prestop):
     
     np_array = values.detach().numpy()
     df = pd.DataFrame(np_array)
@@ -926,15 +924,24 @@ def save_excel(values, autodiff, regression, speedup):
             ],
         )
     else:
-        exc_file = "values_losstracking.xlsx" 
-        df.to_excel(
-            exc_file,
-            index=False,
-            header=["epochs", "loss_mean"],
-        ) 
+        if prestop:
+            exc_file = "values_losstracking_ps.xlsx" 
+            df.to_excel(
+                exc_file,
+                index=False,
+                header=["epochs", "loss_mean"],
+            )
+        else:
+            exc_file = "values_losstracking.xlsx" 
+            df.to_excel(
+                exc_file,
+                index=False,
+                header=["epochs", "loss_mean"],
+            )
     print(f"Values saved to excel file: {exc_file}")
 
     return None
+
 def main():
     """Execute main routine."""
     n_width = parameters.n_width
@@ -946,6 +953,7 @@ def main():
     regression = parameters.regression
     runs = parameters.runs
     speedup = parameters.speedup
+    prestop = parameters.prestop
     """
     n_width = 5
     n_order = 1
@@ -1062,9 +1070,11 @@ def main():
                     same_loss_counter = 0
 
                 previous_loss = loss_mean.item()
-                if same_loss_counter >= 40:
-                    values[run, 6] = pbar1.format_dict["elapsed"]
-                    break
+                if prestop:
+                    if same_loss_counter >= 40:
+                        values[run, 6] = pbar1.format_dict["elapsed"]
+                        break
+                
                 if loss_mean.item() < tol:
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
@@ -1114,8 +1124,8 @@ def main():
     plt.tight_layout()
     plt.savefig("ode.pdf")
 
-    save_excel(values, autodiff, regression, speedup)
-    save_excel(loss_tracking, autodiff, regression, speedup)
+    save_excel(values, autodiff, regression, speedup, prestop)
+    save_excel(loss_tracking, autodiff, regression, speedup, prestop)
     
     return None
 
