@@ -1040,7 +1040,7 @@ def main():
                     loss = torch.mean(torch.square(residual))
 
                     if autodiff is True:
-                        """
+                        
                         g_lst = torch.autograd.grad(
                             outputs=residual,
                             inputs=model.parameters(),
@@ -1050,7 +1050,7 @@ def main():
                             outputs=loss,
                             inputs=model.parameters(),
                         )
-                        
+                        """
                         norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
                     else:
                         g_lst = [A_inner, A_outer]
@@ -1061,8 +1061,8 @@ def main():
                         )
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
-                        #update = (residual / norm) * torch.squeeze(g)
-                        update = 1e-3 * torch.squeeze(g)
+                        update = (residual / norm) * torch.squeeze(g)
+                        #update = 1e-3 * torch.squeeze(g)
                         p.data -= update
 
                     # lr_epoch[sample] = lr
@@ -1083,7 +1083,7 @@ def main():
                         values[run, 6] = pbar1.format_dict["elapsed"]
                         break
                 
-                if loss_mean.item() < tol:
+                if loss_mean.item() <= tol:
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
                 Tickrate = pbar1.format_dict['rate']
