@@ -1114,7 +1114,7 @@ def main():
         #values[run, 7] = pbar1.format_dict["elapsed"]
         #values[run, 8] = Tickrate
         #n_samples = n_samples + 5
-
+    """
     plt.figure(0)
     plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
     plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
@@ -1122,6 +1122,7 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig("ode.pdf")
+    """
     if save:
         save_excel(values, autodiff, regression, speedup, prestop)
         save_excel(loss_tracking, autodiff, regression, speedup, prestop)
