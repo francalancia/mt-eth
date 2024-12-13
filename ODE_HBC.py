@@ -30,8 +30,9 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
         color="tab:gray",
         alpha=0.6,
     )
+    l2 = torch.linalg.norm(f_x_exact - f_x)
     plt.plot(col_exact[:, 0], f_x[:, 0], label="PINN solution", color="tab:green")
-    plt.title(f"Training step {i}")
+    plt.title(f"Training step {i} , L2 error: {l2:.4e}")
     plt.legend()
     plt.show()
 
@@ -53,6 +54,8 @@ class FCN(nn.Module):
             ]
         )
         self.fce = nn.Linear(N_HIDDEN, N_OUTPUT)
+        total_params = sum(p.numel() for p in self.parameters())
+        print(f"Total number of parameters: {total_params}")
 
     def forward(self, x):
         coord = x
@@ -76,7 +79,7 @@ def main():
     n_output = 1
     n_hidden = 32
     n_layers = 2
-    n_epochs = 5000
+    n_epochs = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 

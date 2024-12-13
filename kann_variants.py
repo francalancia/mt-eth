@@ -350,9 +350,9 @@ class LagrangeKANNinner(torch.nn.Module):
             torch.zeros((self.n_width, self.n_nodes))
         )
         
-        self.phi_ikp_inner = torch.zeros((self.n_nodes+1, self.n_width, self.n_nodes))
-        self.dphi_ikp_inner = torch.zeros((self.n_nodes+1, self.n_width, self.n_nodes))
-        self.ddphi_ikp_inner = torch.zeros((self.n_nodes+1, self.n_width, self.n_nodes))
+        self.phi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+        self.dphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+        self.ddphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -742,7 +742,6 @@ class KANN(torch.nn.Module):
             ) + torch.einsum("ik -> i", outer_t_ik)
 
             residual = dy - y
-
         return residual
 
     def linear_system(self, x, y_true,_,sample):
@@ -954,16 +953,9 @@ def main():
     runs = parameters.runs
     speedup = parameters.speedup
     prestop = parameters.prestop
-    """
-    n_width = 5
-    n_order = 1
-    n_samples = 20
+    save = parameters.save
+    
     n_elements = int((n_samples - 2) / n_order)
-    n_epochs = 4000
-    tol = 1e-30
-    autodiff = True
-    regression = True
-    """
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
@@ -973,7 +965,6 @@ def main():
         same_loss_counter = 0
         previous_loss = 0
 
-        n_elements = int((n_samples - 2) / n_order)
         if regression is True:
             x_min = -1.0
         else:
@@ -1131,9 +1122,9 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig("ode.pdf")
-
-    save_excel(values, autodiff, regression, speedup, prestop)
-    save_excel(loss_tracking, autodiff, regression, speedup, prestop)
+    if save:
+        save_excel(values, autodiff, regression, speedup, prestop)
+        save_excel(loss_tracking, autodiff, regression, speedup, prestop)
     
     return None
 
