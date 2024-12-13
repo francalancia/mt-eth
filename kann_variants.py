@@ -699,13 +699,13 @@ class KANN(torch.nn.Module):
         
         total_params = sum(p.numel() for p in self.parameters())
         nodes_per_width = n_elements * n_order + 1
-        print(f"\nTotal parameters: {total_params}")
-        print(f"Order: {n_order}")
-        print(f"Number of elements: {n_elements}")
-        print(f"Nodes per width: {nodes_per_width}")
-        print(f"Samples: {n_samples}")
-        print(f"Regression: {regression}")
-        print(f"Autodiff: {autodiff}\n")
+        #print(f"\nTotal parameters: {total_params}")
+        #print(f"Order: {n_order}")
+        #print(f"Number of elements: {n_elements}")
+        #print(f"Nodes per width: {nodes_per_width}")
+        #print(f"Samples: {n_samples}")
+        #print(f"Regression: {regression}")
+        #print(f"Autodiff: {autodiff}\n")
         return None
 
     def forward(self, x, epoch, sample):
@@ -961,7 +961,7 @@ def main():
     rval = 0
     
     for run in range(runs):
-        print(f"\nrun at iteration {run+1}")
+        #print(f"\nrun at iteration {run+1}")
         same_loss_counter = 0
         previous_loss = 0
 
@@ -999,8 +999,8 @@ def main():
             speedup=speedup
         )
 
-        with tqdm.trange(n_epochs) as pbar1:
-            for _ in pbar1:
+        #with tqdm.trange(n_epochs) as pbar1:
+        for _ in range(n_epochs):
                 lr_epoch = torch.zeros((n_samples,))
                 loss_epoch = torch.zeros((n_samples,))
                 # start looping over each training sample (50 times (0-49))
@@ -1062,7 +1062,7 @@ def main():
                 loss_mean = torch.mean(loss_epoch)
                 loss_str = f"{loss_mean.item():0.4e}"
 
-                pbar1.set_postfix(loss=loss_str)
+                #pbar1.set_postfix(loss=loss_str)
                 if loss_mean.item() >= previous_loss:
                     same_loss_counter += 1
                 else:
@@ -1071,13 +1071,13 @@ def main():
                 previous_loss = loss_mean.item()
                 if prestop:
                     if same_loss_counter >= 40:
-                        values[run, 6] = pbar1.format_dict["elapsed"]
+                        #values[run, 6] = pbar1.format_dict["elapsed"]
                         break
                 
                 if loss_mean.item() <= tol:
-                    values[run, 6] = pbar1.format_dict["elapsed"]
+                    #values[run, 6] = pbar1.format_dict["elapsed"]
                     break
-                Tickrate = pbar1.format_dict['rate']
+                #Tickrate = pbar1.format_dict['rate']
                 
                 if _ == 0 or _ % 10 == 0:
                     loss_tracking[rval,0] = _
@@ -1086,7 +1086,7 @@ def main():
         loss_tracking[rval,0] = _
         loss_tracking[rval,1] = loss_mean
             
-        print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
+        #print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
 
@@ -1102,7 +1102,7 @@ def main():
                 y_hat[sample] = 1 + x * model(x,_,sample)
         
         l2 = torch.linalg.norm(y_i - y_hat)
-        print(f"L2-error: {l2.item():0.4e}")
+        #print(f"L2-error: {l2.item():0.4e}")
         # how many samples, width, order, tol, l2-error,  which epoch, runtinme
         values[run, 0] = n_samples
         values[run, 1] = n_width
@@ -1111,8 +1111,8 @@ def main():
         values[run, 4] = loss_mean
         values[run, 5] = l2
         values[run, 6] = _
-        values[run, 7] = pbar1.format_dict["elapsed"]
-        values[run, 8] = Tickrate
+        #values[run, 7] = pbar1.format_dict["elapsed"]
+        #values[run, 8] = Tickrate
         #n_samples = n_samples + 5
 
     plt.figure(0)
