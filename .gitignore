@@ -5,7 +5,6 @@
 ode.pdf
 
 # Ignore parameters file
-parameters.py
 __pycache__/
 
 # Ignore data files
