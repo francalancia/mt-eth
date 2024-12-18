@@ -276,29 +276,29 @@ class LagrangeKANNinnerODE(torch.nn.Module):
         x_shift = (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
         return x_shift
 
-    def forward(self, x, _, sample):
-        if _ == 0:
-            """Forward pass for whole batch."""
-            if len(x.shape) != 2:
-                x = x.unsqueeze(-1)
-                x = torch.repeat_interleave(x, self.n_width, -1)
-            x_shift = self.to_shift(x)
+    def forward(self, x, epoch, sample):
+        
+        """Forward pass for whole batch."""
+        if len(x.shape) != 2:
+            x = x.unsqueeze(-1)
+            x = torch.repeat_interleave(x, self.n_width, -1)
+        x_shift = self.to_shift(x)
 
-            id_element_in = torch.floor(x_shift / self.n_order)
-            # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
-            id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
-            id_element_in[id_element_in < 0] = 0
+        id_element_in = torch.floor(x_shift / self.n_order)
+        # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
+        id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
+        id_element_in[id_element_in < 0] = 0
 
-            # what is the meaning of the following lines?
-            nodes_in_l = (id_element_in * self.n_order).to(int)
-            nodes_in_r = (nodes_in_l + self.n_order).to(int)
+        # what is the meaning of the following lines?
+        nodes_in_l = (id_element_in * self.n_order).to(int)
+        nodes_in_r = (nodes_in_l + self.n_order).to(int)
 
-            x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
-            self.delta_x_inner = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
+        x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
+        self.delta_x_inner = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
 
-            delta_x_1st = self.delta_x_inner
-            delta_x_2nd = self.delta_x_inner**2
-
+        #delta_x_1st = self.delta_x_inner
+        #delta_x_2nd = self.delta_x_inner**2
+        if epoch == 0:
             phi_local_ikp = self.lagrange(x_transformed, self.n_order)
             dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
             ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
@@ -309,11 +309,12 @@ class LagrangeKANNinnerODE(torch.nn.Module):
                         phi_local_ikp[0, layer, node]
                     )
                     self.dphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        dphi_local_ikp[0, layer, node] / delta_x_1st
+                        dphi_local_ikp[0, layer, node] / self.delta_x_inner
                     )
                     self.ddphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        ddphi_local_ikp[0, layer, node] / delta_x_2nd
+                        ddphi_local_ikp[0, layer, node] / self.delta_x_inner**2
                     )
+                    
         phi_cut = self.phi_ikp_inner[sample:(sample+1), :, :]
         dphi_cut = self.dphi_ikp_inner[sample:(sample+1), :, :]
         ddphi_cut = self.ddphi_ikp_inner[sample:(sample+1), :, :]
@@ -1019,7 +1020,7 @@ def main():
                         if autodiff is True:
                             y = (1 + x * model(x,_,sample))
                             dydx = torch.autograd.grad(
-                                y, x, torch.ones_like(x), create_graph=True
+                                y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                             )[0]
                             residual = dydx - y
                         else:# manual differentiation
