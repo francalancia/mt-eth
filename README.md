@@ -9,3 +9,5 @@ and can be installed via pip:
 ```
 pip install -r requirements.pip
 ```
+# Bugs
+Currently in Branch Speedup from line 301 - 317. Speedup for automatic differentiation for the ODE
