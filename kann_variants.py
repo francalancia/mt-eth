@@ -277,44 +277,47 @@ class LagrangeKANNinnerODE(torch.nn.Module):
         return x_shift
 
     def forward(self, x, epoch, sample):
-        
-        """Forward pass for whole batch."""
-        if len(x.shape) != 2:
-            x = x.unsqueeze(-1)
-            x = torch.repeat_interleave(x, self.n_width, -1)
-        x_shift = self.to_shift(x)
-
-        id_element_in = torch.floor(x_shift / self.n_order)
-        # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
-        id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
-        id_element_in[id_element_in < 0] = 0
-
-        # what is the meaning of the following lines?
-        nodes_in_l = (id_element_in * self.n_order).to(int)
-        nodes_in_r = (nodes_in_l + self.n_order).to(int)
-
-        x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
-        self.delta_x_inner = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
-
-        #delta_x_1st = self.delta_x_inner
-        #delta_x_2nd = self.delta_x_inner**2
         if epoch == 0:
-            phi_local_ikp = self.lagrange(x_transformed, self.n_order)
-            dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
-            ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+            self.x = x
+            """Forward pass for whole batch."""
+            if len(self.x.shape) != 2:
+                self.x = self.x.unsqueeze(-1)
+                self.x = torch.repeat_interleave(self.x, self.n_width, -1)
+            self.x_shift = self.to_shift(self.x)
+
+            id_element_in = torch.floor(self.x_shift / self.n_order)
+            # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
+            #id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
+            #id_element_in[id_element_in < 0] = 0
+            id_element_in = torch.where(id_element_in >= self.n_elements, self.n_elements - 1, id_element_in)
+            id_element_in = torch.where(id_element_in < 0, 0, id_element_in)
+            # what is the meaning of the following lines?
+            nodes_in_l = (id_element_in * self.n_order).to(int)
+            nodes_in_r = (nodes_in_l + self.n_order).to(int)
+
+            self.x_transformed = self.to_ref(self.x_shift, nodes_in_l, nodes_in_r)
+            self.delta_x_inner = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
+
+            #delta_x_1st = self.delta_x_inner
+            #delta_x_2nd = self.delta_x_inner**2
+            
+            self.phi_local_ikp = self.lagrange(self.x_transformed, self.n_order)
+            self.dphi_local_ikp = self.dlagrange(self.x_transformed, self.n_order)
+            self.ddphi_local_ikp = self.ddlagrange(self.x_transformed, self.n_order)
 
             for layer in range(self.n_width):
                 for node in range(self.n_order + 1):
                     self.phi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        phi_local_ikp[0, layer, node]
+                        self.phi_local_ikp[0, layer, node]
                     )
                     self.dphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        dphi_local_ikp[0, layer, node] / self.delta_x_inner
+                        self.dphi_local_ikp[0, layer, node] / self.delta_x_inner
                     )
                     self.ddphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        ddphi_local_ikp[0, layer, node] / self.delta_x_inner**2
+                        self.ddphi_local_ikp[0, layer, node] / self.delta_x_inner**2
                     )
-                    
+
+        sample = torch.round(x * 4).long()
         phi_cut = self.phi_ikp_inner[sample:(sample+1), :, :]
         dphi_cut = self.dphi_ikp_inner[sample:(sample+1), :, :]
         ddphi_cut = self.ddphi_ikp_inner[sample:(sample+1), :, :]
@@ -1014,8 +1017,9 @@ def main():
                             y = model(x,_,sample)
                             residual = y - y_i[sample].unsqueeze(-1)
                         else:  # manual differentiation
-                            system = model.linear_system(x, y_i[sample],_,sample)
-                            A_inner, A_outer, residual = system["A_inner"], system["A_outer"], system["b"]
+                            with torch.no_grad():
+                                system = model.linear_system(x, y_i[sample],_,sample)
+                                A_inner, A_outer, residual = system["A_inner"], system["A_outer"], system["b"]
                     else:
                         if autodiff is True:
                             y = (1 + x * model(x,_,sample))
@@ -1024,10 +1028,11 @@ def main():
                             )[0]
                             residual = dydx - y
                         else:# manual differentiation
-                            system = model.linear_system(x, y_i[sample],_,sample)
-                            A_inner = system["A_inner"]
-                            A_outer = system["A_outer"]
-                            residual = system["b"]
+                            with torch.no_grad():
+                                system = model.linear_system(x, y_i[sample],_,sample)
+                                A_inner = system["A_inner"]
+                                A_outer = system["A_outer"]
+                                residual = system["b"]
 
                     loss = torch.mean(torch.square(residual))
 

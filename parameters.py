@@ -1,6 +1,6 @@
 n_width = 1
 n_order = 1
-n_samples = 20
+n_samples = 5
 n_epochs = 10000
 tol = 1e-26
 autodiff = True
