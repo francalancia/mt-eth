@@ -3,13 +3,24 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import tqdm
+from scipy.integrate import odeint
 
 torch.manual_seed(123)
 torch.set_default_dtype(torch.float64)
 
-def exact_solution(x):
-    y = np.exp(x)
-    return y
+def exact_solution(y0,x):
+    
+    def heaviside(x):
+        return 1 if x >= 1 else 0
+    
+    def system_heaviside(y,x):
+        H = heaviside(x)
+        dydx = H - y
+        return dydx
+    
+    y_heaviside = odeint(system_heaviside, y0, x)
+    
+    return y_heaviside
 
 
 def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
@@ -31,8 +42,14 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
         alpha=1.0,
         linewidth=2,
     )
+    plt.plot(
+        col_exact[:, 0],
+        f_x[:, 0], 
+        linestyle = "--" ,
+        label="PINN solution",
+        color="tab:green",
+        linewidth=2)
     l2 = torch.linalg.norm(f_x_exact - f_x)
-    plt.plot(col_exact[:, 0], f_x[:, 0], linestyle = "--" ,label="PINN solution", color="tab:green", linewidth=2)
     plt.title(f"Training step {i} , L2 error: {l2:.4e}")
     plt.legend()
     plt.show()
@@ -75,59 +92,70 @@ class FCN(nn.Module):
 
 
 def main():
+    learning = True
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 32
-    n_layers = 2
-    n_epochs = 1000
+    n_hidden = 64
+    n_layers = 4
+    n_epochs = 2000
+    k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
     # define collocation points
-    col_points = torch.linspace(0, 1, 20).view(-1, 1).requires_grad_(True)
-
+    col_points = torch.linspace(0, 5, 10000).view(-1, 1).requires_grad_(True)
     # exact solution
-    col_exact = torch.linspace(0, 1, 200).view(-1, 1)
-    f_x_exact = exact_solution(col_exact)
+    y0 = 1
+    col_exact = torch.linspace(0,5,10000)
+    f_x_exact = exact_solution(y0,col_exact)
+    col_exact = col_exact.view(-1,1)
+    f_x_exact = torch.from_numpy(f_x_exact)
+    plt.figure(figsize=(8, 4))
+    plt.plot(col_exact, f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+    plt.grid()
+    plt.show()
+    with torch.no_grad():
+        jump = 1/(1 + torch.exp(-k*(col_points - 1)))
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=4e-3)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
-
-    def closure():
-        # zero the gradients
-        optimiser.zero_grad()
-        # compute model output for the collocation points
-        f_x = pinn(col_points)
-        # compute the grad of the output w.r.t. to the collocation points
-        df_xdx = torch.autograd.grad(
-            f_x, col_points, torch.ones_like(f_x), create_graph=True
-        )[0]
-        # compute the loss mean squared error
-        loss = torch.mean((df_xdx - f_x) ** 2)
-        # backpropagate the loss
-        loss.backward()
-        # return the loss for the optimiser
-        return loss
-    
-    with tqdm.trange(n_epochs) as pbar:
-        for _ in pbar:
-            #loss = optimiser.step(closure)
+    if learning:
+        def closure():
+            # zero the gradients
             optimiser.zero_grad()
-            # compute loss%
+            # compute model output for the collocation points
             f_x = pinn(col_points)
+            # compute the grad of the output w.r.t. to the collocation points
             df_xdx = torch.autograd.grad(
                 f_x, col_points, torch.ones_like(f_x), create_graph=True
-            )[
-                0
-            ]  # (30, 1)
-            loss = torch.mean((df_xdx - f_x) ** 2)
-
-            # backpropagate loss, take optimiser step
+            )[0]
+            # compute the loss mean squared error
+            loss = torch.mean((df_xdx + f_x) ** 2)
+            # backpropagate the loss
             loss.backward()
-            optimiser.step()
-            
-            pbar.set_postfix(loss=f"{loss.item():.4e}")
+            # return the loss for the optimiser
+            return loss
+        
+        with tqdm.trange(n_epochs) as pbar:
+            for _ in pbar:
+                #loss = optimiser.step(closure)
+                
+                optimiser.zero_grad()
+                # compute loss%
+                f_x = pinn(col_points)
+                df_xdx = torch.autograd.grad(
+                    f_x, col_points, torch.ones_like(f_x), create_graph=True
+                )[
+                    0
+                ]  # (30, 1)
+                loss = torch.mean((df_xdx + f_x - jump) ** 2)
+
+                # backpropagate loss, take optimiser step
+                loss.backward()
+                optimiser.step()
+                
+                pbar.set_postfix(loss=f"{loss.item():.4e}")
 
     plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs)
     return None
