@@ -26,6 +26,7 @@ def exact_solution(y0,x):
 def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     f_x = pinn(col_exact).detach()
     plt.figure(figsize=(8, 4))
+    """
     plt.scatter(
         col_points.detach()[:, 0],
         torch.zeros_like(col_points)[:, 0],
@@ -34,6 +35,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
         color="tab:green",
         alpha=1.0,
     )
+    """
     plt.plot(
         col_exact[:, 0],
         f_x_exact[:, 0],
@@ -90,14 +92,17 @@ class FCN(nn.Module):
         """
         return 1 + (coord * (x))
 
+def heaviside(x):
+        tensor = torch.where(x >= 1, torch.ones_like(x), torch.zeros_like(x))
+        return tensor
 
 def main():
     learning = True
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 64
-    n_layers = 4
+    n_hidden = 128
+    n_layers = 3
     n_epochs = 2000
     k = 1000
 
@@ -111,14 +116,16 @@ def main():
     f_x_exact = exact_solution(y0,col_exact)
     col_exact = col_exact.view(-1,1)
     f_x_exact = torch.from_numpy(f_x_exact)
-    plt.figure(figsize=(8, 4))
-    plt.plot(col_exact, f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
-    plt.grid()
-    plt.show()
+    #plt.figure(figsize=(8, 4))
+    #plt.plot(col_exact, f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+    #plt.grid()
+    #plt.show()
     with torch.no_grad():
         jump = 1/(1 + torch.exp(-k*(col_points - 1)))
+        heavyside = heaviside(col_points)
+    
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=4e-3)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-2)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
     if learning:
         def closure():
@@ -149,7 +156,7 @@ def main():
                 )[
                     0
                 ]  # (30, 1)
-                loss = torch.mean((df_xdx + f_x - jump) ** 2)
+                loss = torch.mean((df_xdx + f_x - heavyside) ** 2)
 
                 # backpropagate loss, take optimiser step
                 loss.backward()
