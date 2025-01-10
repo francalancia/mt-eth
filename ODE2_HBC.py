@@ -55,6 +55,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     plt.title(f"Training step {i} , L2 error: {l2:.4e}")
     plt.legend()
     plt.show()
+    plt.savefig("HBC5.png")
 
     return None
 
@@ -101,9 +102,9 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 128
+    n_hidden = 102
     n_layers = 3
-    n_epochs = 2000
+    n_epochs = 7000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
@@ -125,7 +126,7 @@ def main():
         heavyside = heaviside(col_points)
     
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-2)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
     if learning:
         def closure():
