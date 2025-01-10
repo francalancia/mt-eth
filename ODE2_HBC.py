@@ -39,7 +39,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     plt.plot(
         col_exact[:, 0],
         f_x_exact[:, 0],
-        label="Exact solution",
+        label="Analytical solution",
         color="black",
         alpha=1.0,
         linewidth=2,
@@ -51,12 +51,14 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
         label="PINN solution",
         color="tab:green",
         linewidth=2)
+    plt.axvline(x=1, color='r', linestyle='--')
     l2 = torch.linalg.norm(f_x_exact - f_x)
     plt.title(f"Training step {i} , L2 error: {l2:.4e}")
     plt.legend()
-    plt.show()
+    plt.grid()
     plt.savefig("HBC5.png")
-
+    plt.show()
+    
     return None
 
 
@@ -102,8 +104,8 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 102
-    n_layers = 3
+    n_hidden = 64
+    n_layers = 2
     n_epochs = 7000
     k = 1000
 
@@ -117,10 +119,10 @@ def main():
     f_x_exact = exact_solution(y0,col_exact)
     col_exact = col_exact.view(-1,1)
     f_x_exact = torch.from_numpy(f_x_exact)
-    #plt.figure(figsize=(8, 4))
-    #plt.plot(col_exact, f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
-    #plt.grid()
-    #plt.show()
+    plt.figure(figsize=(8, 4))
+    plt.plot(col_exact, f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+    plt.grid()
+    plt.show()
     with torch.no_grad():
         jump = 1/(1 + torch.exp(-k*(col_points - 1)))
         heavyside = heaviside(col_points)

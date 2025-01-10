@@ -3,7 +3,7 @@
 import matplotlib.pyplot as plt
 import torch
 import tqdm
-import parameters
+import parameters_ode
 import pandas as pd
 from scipy.integrate import odeint
 
@@ -673,7 +673,6 @@ class KANN(torch.nn.Module):
         n_samples,
         x_min,
         x_max,
-        regression,
         autodiff,
         speedup
     ):
@@ -686,21 +685,11 @@ class KANN(torch.nn.Module):
         self.n_samples = n_samples
         self.x_min = x_min
         self.x_max = x_max
-        self.regression = regression
         self.autodiff = autodiff
         self.speedup = speedup
 
-        if speedup:
-            if (not regression and autodiff):
-                self.inner = LagrangeKANNinnerODE(n_width, n_order, n_elements, n_samples, x_min, x_max)
-                self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
-            else:
-                self.inner = LagrangeKANNinner(n_width, n_order, n_elements, n_samples, x_min, x_max)
-                self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
- 
-        else:
-            self.inner = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
-            self.outer = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
+        self.inner = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
+        self.outer = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
         
         total_params = sum(p.numel() for p in self.parameters())
         nodes_per_width = n_elements * n_order + 1
@@ -709,158 +698,116 @@ class KANN(torch.nn.Module):
         print(f"Number of elements: {n_elements}")
         print(f"Nodes per width: {nodes_per_width}")
         print(f"Samples: {n_samples}")
-        print(f"Regression: {regression}")
         print(f"Autodiff: {autodiff}\n")
         return None
 
-    def forward(self, x, epoch, sample):
+    def forward(self, x):
         """Forward pass for whole batch."""
-        if self.speedup:
-            x = self.inner(x,epoch,sample)["t_ik"]
-        else:
-            x = self.inner(x)["t_ik"]
+        x = self.inner(x)["t_ik"]
         x = self.outer(x)["t_ik"]
 
         x = torch.einsum("ik -> i", x)
 
         return x
 
-    def residual(self, x, y_true,epoch,sample):
+    def residual(self, x, epoch,sample):
         """Calculate residual."""
-        if self.regression is True:
-            y = self.forward(x,epoch,sample)
-            residual = y - y_true
 
-        else:
-            y = 1 + x * self.forward(x,epoch,sample)
+        y = 1 + x * self.forward(x,epoch,sample)
 
-            inner_dict = self.inner(x)
+        inner_dict = self.inner(x)
+        outer_dict = self.outer(inner_dict["t_ik"])
+
+        inner_dt_ik = inner_dict["dt_ik"]
+
+        outer_t_ik = outer_dict["t_ik"]
+        outer_dt_ik = outer_dict["dt_ik"]
+
+        dy = torch.einsum(
+            "i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik
+        ) + torch.einsum("ik -> i", outer_t_ik)
+
+        residual = dy - y
+        return residual
+
+    def linear_system(self, x, y_true,_,sample):
+        """Compute Ax=b."""
+        if self.speedup:
+            inner_dict = self.inner(x,_,sample)
             outer_dict = self.outer(inner_dict["t_ik"])
 
             inner_dt_ik = inner_dict["dt_ik"]
+            #inner_phi_ikp = inner_dict["phi_ikp"]
+            inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
+            #inner_dphi_ikp = inner_dict["dphi_ikp"]
+            inner_dphi_ikp = self.inner.dphi_ikp_inner[sample:(sample+1), :, :]
 
             outer_t_ik = outer_dict["t_ik"]
             outer_dt_ik = outer_dict["dt_ik"]
+            outer_ddt_ik = outer_dict["ddt_ik"]
+            outer_phi_ikl = outer_dict["phi_ikp"]
+            outer_dphi_ikl = outer_dict["dphi_ikp"]
+
+            A_outer = (
+                torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
+                - torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
+                + torch.einsum("ikl -> ikl", outer_phi_ikl)
+            )
+
+            A_inner = (
+                torch.einsum(
+                    "i, ik, ik, ikp -> kp",
+                    x,
+                    outer_ddt_ik,
+                    inner_dt_ik,
+                    inner_phi_ikp,
+                )
+                + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
+                + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
+                - torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
+            )
+            
+            y1 = torch.einsum("ik -> i", outer_t_ik)
+            y = 1 + x * y1
 
             dy = torch.einsum(
                 "i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik
             ) + torch.einsum("ik -> i", outer_t_ik)
 
-            residual = dy - y
-        return residual
-
-    def linear_system(self, x, y_true,_,sample):
-        """Compute Ax=b."""
-        if self.regression is True:
-            if self.speedup:
-                inner_dict = self.inner(x,_,sample)
-                outer_dict = self.outer(inner_dict["t_ik"])
-                
-                #inner_phi_ikp = inner_dict["phi_ikp"]
-                inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
-
-                outer_dt_ik = outer_dict["dt_ik"]
-                outer_t_ik = outer_dict["t_ik"]
-                outer_phi_ikl = outer_dict["phi_ikp"]
-                
-                y = torch.einsum("ik -> i", outer_t_ik)
-                b = y - y_true
-                
-                A_outer = torch.einsum("ikl -> ikl", outer_phi_ikl)
-
-                A_inner = torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-            else:
-                b = self.residual(x, y_true,_,sample)
-                inner_dict = self.inner(x)
-                outer_dict = self.outer(inner_dict["t_ik"])
-
-                inner_phi_ikp = inner_dict["phi_ikp"]
-
-                outer_dt_ik = outer_dict["dt_ik"]
-                outer_phi_ikl = outer_dict["phi_ikp"]
-
-                A_outer = torch.einsum("ikl -> ikl", outer_phi_ikl)
-
-                A_inner = torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-                
-
+            b = dy - y
+            
         else:
-            if self.speedup:
-                inner_dict = self.inner(x,_,sample)
-                outer_dict = self.outer(inner_dict["t_ik"])
+            b = self.residual(x, y_true,_,sample)
+            inner_dict = self.inner(x)
+            outer_dict = self.outer(inner_dict["t_ik"])
 
-                inner_dt_ik = inner_dict["dt_ik"]
-                #inner_phi_ikp = inner_dict["phi_ikp"]
-                inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
-                #inner_dphi_ikp = inner_dict["dphi_ikp"]
-                inner_dphi_ikp = self.inner.dphi_ikp_inner[sample:(sample+1), :, :]
+            inner_dt_ik = inner_dict["dt_ik"]
+            inner_phi_ikp = inner_dict["phi_ikp"]
+            inner_dphi_ikp = inner_dict["dphi_ikp"]
 
-                outer_t_ik = outer_dict["t_ik"]
-                outer_dt_ik = outer_dict["dt_ik"]
-                outer_ddt_ik = outer_dict["ddt_ik"]
-                outer_phi_ikl = outer_dict["phi_ikp"]
-                outer_dphi_ikl = outer_dict["dphi_ikp"]
+            outer_dt_ik = outer_dict["dt_ik"]
+            outer_ddt_ik = outer_dict["ddt_ik"]
+            outer_phi_ikl = outer_dict["phi_ikp"]
+            outer_dphi_ikl = outer_dict["dphi_ikp"]
 
-                A_outer = (
-                    torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
-                    - torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
-                    + torch.einsum("ikl -> ikl", outer_phi_ikl)
+            A_outer = (
+                torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
+                - torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
+                + torch.einsum("ikl -> ikl", outer_phi_ikl)
+            )
+
+            A_inner = (
+                torch.einsum(
+                    "i, ik, ik, ikp -> kp",
+                    x,
+                    outer_ddt_ik,
+                    inner_dt_ik,
+                    inner_phi_ikp,
                 )
-
-                A_inner = (
-                    torch.einsum(
-                        "i, ik, ik, ikp -> kp",
-                        x,
-                        outer_ddt_ik,
-                        inner_dt_ik,
-                        inner_phi_ikp,
-                    )
-                    + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
-                    + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-                    - torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
-                )
-                
-                y1 = torch.einsum("ik -> i", outer_t_ik)
-                y = 1 + x * y1
-
-                dy = torch.einsum(
-                    "i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik
-                ) + torch.einsum("ik -> i", outer_t_ik)
-
-                b = dy - y
-                
-            else:
-                b = self.residual(x, y_true,_,sample)
-                inner_dict = self.inner(x)
-                outer_dict = self.outer(inner_dict["t_ik"])
-
-                inner_dt_ik = inner_dict["dt_ik"]
-                inner_phi_ikp = inner_dict["phi_ikp"]
-                inner_dphi_ikp = inner_dict["dphi_ikp"]
-
-                outer_dt_ik = outer_dict["dt_ik"]
-                outer_ddt_ik = outer_dict["ddt_ik"]
-                outer_phi_ikl = outer_dict["phi_ikp"]
-                outer_dphi_ikl = outer_dict["dphi_ikp"]
-
-                A_outer = (
-                    torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
-                    - torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
-                    + torch.einsum("ikl -> ikl", outer_phi_ikl)
-                )
-
-                A_inner = (
-                    torch.einsum(
-                        "i, ik, ik, ikp -> kp",
-                        x,
-                        outer_ddt_ik,
-                        inner_dt_ik,
-                        inner_phi_ikp,
-                    )
-                    + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
-                    + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-                    - torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
-                )
+                + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
+                + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
+                - torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
+            )
 
         return {"A_inner": A_inner, "A_outer": A_outer, "b": b}
 
@@ -883,6 +830,7 @@ def diff(x, y, order):
     """
     return dxdy
 def ode_hde(y0,x):
+    x = x.detach()
     def heaviside(x):
         return 1 if x >= 1 else 0
     
@@ -892,17 +840,11 @@ def ode_hde(y0,x):
         return dydx
     
     y_heaviside = odeint(system_heaviside, y0, x)
+    y_heaviside = torch.from_numpy(y_heaviside).squeeze()
     return y_heaviside
-def disc_osc(x):
-    """Use regression."""
-    if x < 0.0:
-        y = 5.0
-        for k in range(1, 5):
-            y += torch.sin(k * x)
-    else:
-        y = torch.cos(10.0 * x)
-
-    return y
+def heaviside_fct(x):
+    tensor = torch.where(x >= 1, torch.ones_like(x), torch.zeros_like(x))
+    return tensor
 
 def save_excel(values, autodiff, regression, speedup, prestop):
     
@@ -955,22 +897,52 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
+def plot_solution(x_i_real, y_hat, y_i, l2):
+    x_i_real_np = x_i_real.detach().numpy()
+    y_hat_np = y_hat.detach().numpy()        
+    y_i_np = y_i.detach().numpy()            
+    l2_np = l2.detach().item()               
+
+    # Plotting
+    plt.plot(
+        x_i_real_np,
+        y_i_np,
+        label="Exact solution",
+        color="black",
+        alpha=1.0,
+        linewidth=2,
+    )
+    plt.plot(
+        x_i_real_np,
+        y_hat_np,
+        linestyle="--",
+        label="KANN solution",
+        color="tab:green",
+        linewidth=2
+    )
+    plt.title(f"L2-error: {l2_np:0.4e}")
+    plt.legend()
+    plt.grid()
+    plt.savefig("KANNsol.png")
+    plt.show()
+
+    return None
 
 def main():
     """Execute main routine."""
-    n_width = parameters.n_width
-    n_order = parameters.n_order
-    n_samples = parameters.n_samples
-    n_epochs = parameters.n_epochs
-    tol = parameters.tol
-    autodiff = parameters.autodiff
-    regression = parameters.regression
-    runs = parameters.runs
-    speedup = parameters.speedup
-    prestop = parameters.prestop
-    save = parameters.save
-    
+    n_width = parameters_ode.n_width
+    n_order = parameters_ode.n_order
+    n_samples = parameters_ode.n_samples
+    n_epochs = parameters_ode.n_epochs
+    tol = parameters_ode.tol
+    autodiff = parameters_ode.autodiff
+    runs = parameters_ode.runs
+    speedup = parameters_ode.speedup
+    prestop = parameters_ode.prestop
+    save = parameters_ode.save
     n_elements = int((n_samples - 2) / n_order)
+    
+    # initialize tensor to store values
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
@@ -979,25 +951,29 @@ def main():
         print(f"\nrun at iteration {run+1}")
         same_loss_counter = 0
         previous_loss = 0
-
-        if regression is True:
-            x_min = -1.0
-        else:
-            x_min = 0.0
-        x_max = 1.0
-
+        
+        # define range and initial value for the ODE
+        x_min = 0.0
+        x_max = 5.0
+        y0 = 1
+        
         # vector of n_samples from x_min to x_max
         x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
-
-        # create sample data
-        if regression is True:
-            # y - vec with n_samples entries
-            y_i = torch.zeros_like(x_i)
-            for sample in range(n_samples):
-                y_i[sample] = disc_osc(x_i[sample])
-        else:
-            y_i = torch.exp(x_i)
-
+        x_i_real = torch.linspace(x_min, x_max, n_samples)
+        # create sample Data
+        y_i = ode_hde(y0,x_i)
+        
+        if True:
+            plt.figure(figsize=(8, 4))
+            plt.plot(x_i_real, y_i, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+            plt.grid()
+            plt.show()
+        
+        
+        # create heaviside function for ODE HBC
+        with torch.no_grad():
+            heaviside_tensor = heaviside_fct(x_i)
+            
         sample = 0
         _ = 0
         loss_mean = 0
@@ -1009,7 +985,6 @@ def main():
             n_samples=1,
             x_min=x_min,
             x_max=x_max,
-            regression=regression,
             autodiff=autodiff,
             speedup=speedup
         )
@@ -1023,57 +998,31 @@ def main():
 
                     x = x_i[sample].unsqueeze(-1)
 
-                    if regression is True:
-                        if autodiff is True:
-                            y = model(x,_,sample)
-                            residual = y - y_i[sample].unsqueeze(-1)
-                        else:  # manual differentiation
-                            with torch.no_grad():
-                                system = model.linear_system(x, y_i[sample],_,sample)
-                                A_inner, A_outer, residual = system["A_inner"], system["A_outer"], system["b"]
-                    else:
-                        if autodiff is True:
-                            y = (1 + x * model(x,_,sample))
-                            dydx = torch.autograd.grad(
-                                y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
-                            )[0]
-                            residual = dydx - y
-                        else:# manual differentiation
-                            with torch.no_grad():
-                                system = model.linear_system(x, y_i[sample],_,sample)
-                                A_inner = system["A_inner"]
-                                A_outer = system["A_outer"]
-                                residual = system["b"]
+                    if autodiff is True:
+                        y = (1 + (x * model(x)))
+                        dydx = torch.autograd.grad(
+                            y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
+                        )[0]
+                        residual = dydx + y - heaviside_tensor[sample].unsqueeze(-1)
+                    else:# manual differentiation
+                        print("Manual differentiation not implemented")
 
                     loss = torch.mean(torch.square(residual))
 
                     if autodiff is True:
-                        
                         g_lst = torch.autograd.grad(
                             outputs=residual,
                             inputs=model.parameters(),
                         )
-                        """
-                        g_lst = torch.autograd.grad(
-                            outputs=loss,
-                            inputs=model.parameters(),
-                        )
-                        """
                         norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
                     else:
-                        g_lst = [A_inner, A_outer]
-
-                        norm = (
-                            torch.linalg.norm(A_inner) ** 2
-                            + torch.linalg.norm(A_outer) ** 2
-                        )
+                        print("Manual differentiation not implemented")
+                        
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
                         update = (residual / norm) * torch.squeeze(g)
-                        #update = 1e-3 * torch.squeeze(g)
                         p.data -= update
 
-                    # lr_epoch[sample] = lr
                     loss_epoch[sample] = loss
 
                 loss_mean = torch.mean(loss_epoch)
@@ -1107,16 +1056,11 @@ def main():
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
 
-        # calculate final result of the model and the plot
-        y_hat = torch.zeros_like(x_i)
+        # create the final output of the model
+        y_hat = torch.zeros_like(x_i_real)
         for sample in range(n_samples):
             x = x_i[sample].unsqueeze(-1)
-
-            if regression is True:
-                y_hat[sample] = model(x,_,sample)
-
-            else:
-                y_hat[sample] = 1 + x * model(x,_,sample)
+            y_hat[sample] = 1 + x * model(x)
         
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
@@ -1132,17 +1076,8 @@ def main():
         values[run, 8] = Tickrate
         #n_samples = n_samples + 5
 
-    plt.figure(0)
-    plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
-    plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
-    plt.title(f"L2-error: {l2.detach().numpy():0.4e}")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig("ode.pdf")
-    if save:
-        save_excel(values, autodiff, regression, speedup, prestop)
-        save_excel(loss_tracking, autodiff, regression, speedup, prestop)
-    
+    plot_solution(x_i_real,y_hat, y_i, l2)
+
     return None
 
 if __name__ == "__main__":
