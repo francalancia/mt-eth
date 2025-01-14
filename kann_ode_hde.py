@@ -481,6 +481,7 @@ def main():
         x_min = 0.0
         x_max = 1.0
         y0 = 1
+        k = 1000
         logpoints = False
         # vector of n_samples from x_min to x_max
         #x_i = collocationpoints(n_samples).requires_grad_(True)
@@ -515,6 +516,7 @@ def main():
         y_i = f_x_exact
         # create heaviside function for ODE HBC
         with torch.no_grad():
+            jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
             heaviside_tensor = heaviside_fct(x_i)
             #heavyside_tensor = heaviside_fct(col_points)
             if False:
@@ -548,12 +550,13 @@ def main():
                     loss = 0  
                     x = x_i[sample].unsqueeze(-1)
                     h = heaviside_tensor[sample].unsqueeze(-1)
+                    j = jump[sample].unsqueeze(-1)
                     if autodiff is True:
                         y = 1 + x * model(x)
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx - 10*(h-y))
+                        residual = (dydx - 10*(j-y))
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 

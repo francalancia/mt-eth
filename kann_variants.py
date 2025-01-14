@@ -1170,6 +1170,7 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig("ode.pdf")
+    plt.show()
     if save:
         save_excel(values, autodiff, regression, speedup, prestop)
         save_excel(loss_tracking, autodiff, regression, speedup, prestop)
