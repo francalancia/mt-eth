@@ -322,18 +322,18 @@ class KANN(torch.nn.Module):
 def ode_hde(y0,x):
     
     def heaviside(x):
-        return 1 if x >= 1 else 0
+        return 1 if x >= 0.1 else 0
     
     def system_heaviside(y,x):
         H = heaviside(x)
-        dydx = H - y
+        dydx = 10*(H - y)
         return dydx
     
     y_heaviside = odeint(system_heaviside, y0, x)
     
     return y_heaviside
 def heaviside_fct(x):
-    tensor = torch.where(x >= 1, torch.ones_like(x), torch.zeros_like(x))
+    tensor = torch.where(x >= 0.1, torch.ones_like(x), torch.zeros_like(x))
     return tensor
 
 def save_excel(values, autodiff, regression, speedup, prestop):
@@ -479,7 +479,7 @@ def main():
         
         # define range and initial value for the ODE
         x_min = 0.0
-        x_max = 5.0
+        x_max = 1.0
         y0 = 1
         logpoints = False
         # vector of n_samples from x_min to x_max
@@ -553,7 +553,7 @@ def main():
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx + y - h)
+                        residual = (dydx - 10*(h-y))
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 
@@ -579,7 +579,7 @@ def main():
                 loss_str = f"{loss_mean.item():0.4e}"
 
                 pbar1.set_postfix(loss=loss_str)
-                if loss.item() < 1e-3:
+                if loss.item() < 1e-5:
                     break
                 Tickrate = pbar1.format_dict['rate']
             
