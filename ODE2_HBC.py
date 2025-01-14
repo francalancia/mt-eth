@@ -29,6 +29,15 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     col_points = col_points.detach()
     f_x_exact = torch.from_numpy(f_x_exact).view(-1,1)
     plt.figure(figsize=(8, 4))
+    
+    plt.rcParams.update({
+    'font.size': 10,              # Base font size
+    'axes.labelsize': 11,         # Axis labels
+    'xtick.labelsize': 10,        # X-axis tick labels
+    'ytick.labelsize': 10,        # Y-axis tick labels
+    'legend.fontsize': 10,        # Legend
+    'figure.titlesize': 12        # Figure title
+    })
     """
     plt.scatter(
         col_points.detach()[:, 0],
@@ -57,9 +66,11 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     plt.axvline(x=1, color='r', linestyle='--')
     l2 = torch.linalg.norm(f_x_exact - f_x)
     plt.title(f"Training step {i} , L2 error: {l2:.4e}")
+    plt.xlabel("x")
+    plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    plt.savefig("ODE2_log2.png")
+    plt.savefig("ODE2_lin1.png")
     plt.show()
     
     return None
@@ -123,16 +134,16 @@ def main():
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
-    tot_val_log =210
-    tot_val = 211
+    tot_val_log = 90
+    tot_val = 111
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 5, tot_val)
     # exact solution
     y0 = 1
-    #f_x_exact = exact_solution(y0, col_points)
-    f_x_exact = exact_solution(y0, col_points2)
-    col_points = col_points2
+    f_x_exact = exact_solution(y0, col_points)
+    #f_x_exact = exact_solution(y0, col_points2)
+    #col_points = col_points2
     plt.figure(figsize=(8, 4))
     plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
     plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
@@ -161,7 +172,7 @@ def main():
         heavyside = heaviside(col_points)
     
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3, weight_decay=1e-2)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3, weight_decay=3e-2)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
     if learning:
         def closure():
@@ -174,7 +185,7 @@ def main():
                 f_x, col_points, torch.ones_like(f_x), create_graph=True
             )[0]
             # compute the loss mean squared error
-            loss = torch.mean((df_xdx + f_x) ** 2)
+            loss = torch.mean((df_xdx - heavyside+ f_x) ** 2)
             # backpropagate the loss
             loss.backward()
             # return the loss for the optimiser

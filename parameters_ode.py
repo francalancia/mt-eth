@@ -1,7 +1,7 @@
-n_width = 20
+n_width = 3
 n_order = 1
-n_samples = 200
-n_epochs = 50
+n_samples = 112
+n_epochs = 1000
 tol = 1e-26
 autodiff = True
 speedup = False
