@@ -7,6 +7,7 @@ import parameters_ode
 import pandas as pd
 from scipy.integrate import odeint
 
+
 # set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
 
@@ -927,7 +928,16 @@ def plot_solution(x_i_real, y_hat, y_i, l2):
     plt.show()
 
     return None
+def collocationpoints(total_values):
+    nval1 = total_values // 5
+    nval2 = total_values - nval1
+    log_values = torch.logspace(0, torch.log10(torch.tensor(5.0)), steps=nval2, base=10)
 
+    # Second example: Logarithmic spacing between 1 and 0
+    log_values2 = torch.logspace(0, -2, steps=nval1, base=10)
+    log_values2 = 1 - log_values2  # Flip to go from 1 to 0
+    combined = torch.cat((log_values2, log_values))
+    return combined
 def main():
     """Execute main routine."""
     n_width = parameters_ode.n_width
@@ -940,12 +950,14 @@ def main():
     speedup = parameters_ode.speedup
     prestop = parameters_ode.prestop
     save = parameters_ode.save
+    track_values = parameters_ode.track_values
     n_elements = int((n_samples - 2) / n_order)
     
     # initialize tensor to store values
-    values = torch.zeros((runs, 9))
-    loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
-    rval = 0
+    if track_values:
+        values = torch.zeros((runs, 9))
+        loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
+        rval = 0
     
     for run in range(runs):
         print(f"\nrun at iteration {run+1}")
@@ -958,14 +970,17 @@ def main():
         y0 = 1
         
         # vector of n_samples from x_min to x_max
-        x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
+        x_i = collocationpoints(n_samples).requires_grad_(True)
+        #x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
         x_i_real = torch.linspace(x_min, x_max, n_samples)
+        x_i_real = x_i.detach()
         # create sample Data
         y_i = ode_hde(y0,x_i)
         
         if True:
             plt.figure(figsize=(8, 4))
             plt.plot(x_i_real, y_i, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+            plt.plot(x_i_real, torch.zeros_like(x_i), "o", label="Collocation points", color="black", alpha=1.0)
             plt.grid()
             plt.show()
         
@@ -973,6 +988,10 @@ def main():
         # create heaviside function for ODE HBC
         with torch.no_grad():
             heaviside_tensor = heaviside_fct(x_i)
+            plt.figure(figsize=(8, 4))
+            plt.plot(x_i_real, heaviside_tensor, label="Heaviside function", color="black", alpha=1.0, linewidth=2)
+            plt.grid()
+            plt.show()
             
         sample = 0
         _ = 0
@@ -994,16 +1013,16 @@ def main():
                 lr_epoch = torch.zeros((n_samples,))
                 loss_epoch = torch.zeros((n_samples,))
                 # start looping over each training sample (50 times (0-49))
-                for sample in range(n_samples):
-
+                for sample in range(n_samples):    
+                    loss = 0  
                     x = x_i[sample].unsqueeze(-1)
-
+                    h = heaviside_tensor[sample].unsqueeze(-1)
                     if autodiff is True:
-                        y = (1 + (x * model(x)))
+                        y = 1 + x * model(x)
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = dydx + y - heaviside_tensor[sample].unsqueeze(-1)
+                        residual = (dydx + y - h)
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 
@@ -1044,37 +1063,19 @@ def main():
                     values[run, 6] = pbar1.format_dict["elapsed"]
                     break
                 Tickrate = pbar1.format_dict['rate']
-                
-                if _ == 0 or _ % 10 == 0:
-                    loss_tracking[rval,0] = _
-                    loss_tracking[rval,1] = loss_mean
-                    rval += 1
-        loss_tracking[rval,0] = _
-        loss_tracking[rval,1] = loss_mean
             
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
 
         # create the final output of the model
-        y_hat = torch.zeros_like(x_i_real)
+        y_hat = torch.zeros_like(x_i)
         for sample in range(n_samples):
             x = x_i[sample].unsqueeze(-1)
             y_hat[sample] = 1 + x * model(x)
         
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
-        # how many samples, width, order, tol, l2-error,  which epoch, runtinme
-        values[run, 0] = n_samples
-        values[run, 1] = n_width
-        values[run, 2] = n_order
-        values[run, 3] = tol
-        values[run, 4] = loss_mean
-        values[run, 5] = l2
-        values[run, 6] = _
-        values[run, 7] = pbar1.format_dict["elapsed"]
-        values[run, 8] = Tickrate
-        #n_samples = n_samples + 5
 
     plot_solution(x_i_real,y_hat, y_i, l2)
 

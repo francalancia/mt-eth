@@ -23,8 +23,11 @@ def exact_solution(y0,x):
     return y_heaviside
 
 
-def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
-    f_x = pinn(col_exact).detach()
+def plot_solution(pinn, col_points, f_x_exact, i):
+    with torch.no_grad():
+        f_x = pinn(col_points).detach()
+    col_points = col_points.detach()
+    f_x_exact = torch.from_numpy(f_x_exact).view(-1,1)
     plt.figure(figsize=(8, 4))
     """
     plt.scatter(
@@ -37,7 +40,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     )
     """
     plt.plot(
-        col_exact[:, 0],
+        col_points[:, 0],
         f_x_exact[:, 0],
         label="Analytical solution",
         color="black",
@@ -45,7 +48,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
         linewidth=2,
     )
     plt.plot(
-        col_exact[:, 0],
+        col_points[:, 0],
         f_x[:, 0], 
         linestyle = "--" ,
         label="PINN solution",
@@ -56,7 +59,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     plt.title(f"Training step {i} , L2 error: {l2:.4e}")
     plt.legend()
     plt.grid()
-    plt.savefig("HBC5.png")
+    plt.savefig("ODE2_log2.png")
     plt.show()
     
     return None
@@ -98,37 +101,67 @@ class FCN(nn.Module):
 def heaviside(x):
         tensor = torch.where(x >= 1, torch.ones_like(x), torch.zeros_like(x))
         return tensor
+def collocationpoints(total_values):
+    nval1 = total_values // 3
+    nval2 = total_values - nval1
+    log_values = torch.logspace(0, torch.log10(torch.tensor(5.0)), steps=nval2, base=10)
 
+    # Second example: Logarithmic spacing between 1 and 0
+    log_values2 = torch.logspace(0, -3, steps=nval1, base=10)
+    log_values2 = 1 - log_values2  # Flip to go from 1 to 0
+    combined = torch.cat((log_values2, log_values))
+    combined = combined.detach().numpy()
+    return combined
 def main():
     learning = True
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 64
+    n_hidden = 32
     n_layers = 2
-    n_epochs = 7000
+    n_epochs = 15000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
-
+    tot_val_log =210
+    tot_val = 211
     # define collocation points
-    col_points = torch.linspace(0, 5, 10000).view(-1, 1).requires_grad_(True)
+    col_points2 = collocationpoints(tot_val_log)
+    col_points = np.linspace(0, 5, tot_val)
     # exact solution
     y0 = 1
-    col_exact = torch.linspace(0,5,10000)
-    f_x_exact = exact_solution(y0,col_exact)
-    col_exact = col_exact.view(-1,1)
-    f_x_exact = torch.from_numpy(f_x_exact)
+    #f_x_exact = exact_solution(y0, col_points)
+    f_x_exact = exact_solution(y0, col_points2)
+    col_points = col_points2
     plt.figure(figsize=(8, 4))
-    plt.plot(col_exact, f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+    plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
+    plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
     plt.grid()
-    plt.show()
+    #plt.show()
+    if False:
+        col_exact = torch.linspace(0,5,tot_val)
+        col_exact2 = collocationpoints(tot_val_log)
+        f_x_exact = exact_solution(y0,col_exact)
+        f_x_exact2 = exact_solution(y0,col_exact2)
+        col_exact = col_exact.view(-1,1)
+        col_exact2 = col_exact2.view(-1,1)
+        f_x_exact = torch.from_numpy(f_x_exact)
+        f_x_exact2 = torch.from_numpy(f_x_exact2)
+    if False:
+        plt.figure(figsize=(8, 4))
+        plt.plot(col_exact, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
+        plt.scatter(col_exact, torch.zeros_like(col_exact)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+        plt.plot(col_exact2, f_x_exact2, label="Exact solution", color="red", alpha=1.0, linewidth=2)
+        plt.scatter(col_exact2, torch.zeros_like(col_exact2)-0.1, label="Initial condition", color="red", alpha=1.0, linewidth=2)
+        plt.grid()
+        plt.show()
+    col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
     with torch.no_grad():
         jump = 1/(1 + torch.exp(-k*(col_points - 1)))
         heavyside = heaviside(col_points)
     
 
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3, weight_decay=1e-2)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
     if learning:
         def closure():
@@ -159,7 +192,7 @@ def main():
                 )[
                     0
                 ]  # (30, 1)
-                loss = torch.mean((df_xdx + f_x - heavyside) ** 2)
+                loss = torch.mean((df_xdx - heavyside + f_x ) ** 2)
 
                 # backpropagate loss, take optimiser step
                 loss.backward()
@@ -167,7 +200,7 @@ def main():
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
 
-    plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs)
+    plot_solution(pinn, col_points, f_x_exact, n_epochs)
     return None
 
 

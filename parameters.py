@@ -1,5 +1,5 @@
 n_width = 10
-n_order = 1
+n_order = 2
 n_samples = 50
 n_epochs = 1000
 tol = 1e-26
