@@ -464,7 +464,7 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.grid()
     plt.xlabel("x")
     plt.show()
-
+#
     return None
 def collocationpoints(total_values):
     nval1 = total_values // 5
