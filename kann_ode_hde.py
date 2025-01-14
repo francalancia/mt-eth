@@ -390,6 +390,8 @@ def save_excel(values, autodiff, regression, speedup, prestop):
 def plot_solution(x_i, y_hat, y_i, l2): 
     x_i = x_i.detach().view(-1,1).numpy()
     # Plotting
+    error_abs = np.abs(y_i - y_hat)
+    plt.figure(2,figsize=(8, 4))
     plt.rcParams.update({
     'font.size': 10,              # Base font size
     'axes.labelsize': 11,         # Axis labels
@@ -414,23 +416,63 @@ def plot_solution(x_i, y_hat, y_i, l2):
         color="tab:green",
         linewidth=2
     )
-    plt.axvline(x=1, color='r', linestyle='--')
+    plt.axvline(x=1, color='gray', linestyle='--')
     plt.title(f"L2-error: {l2:0.4e}")
     plt.xlabel("x")
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    plt.savefig("KANNsol.png")
+    #plt.savefig("KANNsollog.png")
+    plt.figure(3,figsize=(8, 4))
+    plt.plot(
+        x_i,
+        error_abs,
+        label="Absolute error",
+        color="red",
+        alpha=1.0,
+        linewidth=2,
+    )
+    plt.grid()
+    plt.xlabel("x")
+    plt.ylabel("Absolute error")
+    plt.figure(4,figsize=(8, 4))
+    plt.plot(
+        x_i,
+        y_i,
+        label="Exact solution",
+        color="black",
+        alpha=1.0,
+        linewidth=2,
+    )
+    plt.plot(
+        x_i,
+        y_hat,
+        linestyle="--",
+        label="KANN solution",
+        color="tab:green",
+        linewidth=2
+    )
+    plt.axvline(x=1, color='gray', linestyle='--')
+    plt.plot(
+        x_i,
+        error_abs,
+        label="Absolute error",
+        color="red",
+        alpha=1.0,
+        linewidth=2,
+    )
+    plt.grid()
+    plt.xlabel("x")
     plt.show()
 
     return None
 def collocationpoints(total_values):
-    nval1 = total_values // 3
+    nval1 = total_values // 5
     nval2 = total_values - nval1
     log_values = torch.logspace(0, torch.log10(torch.tensor(5.0)), steps=nval2, base=10)
-
+    log_values = torch.linspace(1, 5, steps=nval2)
     # Second example: Logarithmic spacing between 1 and 0
-    log_values2 = torch.logspace(0, -3, steps=nval1, base=10)
+    log_values2 = torch.logspace(0, -2, steps=nval1, base=10)
     log_values2 = 1 - log_values2  # Flip to go from 1 to 0
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
@@ -477,7 +519,7 @@ def main():
         if logpoints:
             col_points_log = collocationpoints(n_samples)
             f_x_exact = ode_hde(y0, col_points_log)
-            if True:
+            if False:
                 plt.figure(figsize=(8, 4))
                 plt.plot(col_points_log, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
                 plt.scatter(col_points_log, np.zeros_like(col_points_log)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
@@ -487,7 +529,7 @@ def main():
         else:
             col_points = np.linspace(x_min, x_max, n_samples)
             f_x_exact = ode_hde(y0, col_points)
-            if True:
+            if False:
                 plt.figure(figsize=(8, 4))
                 plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
                 plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
@@ -501,10 +543,12 @@ def main():
         with torch.no_grad():
             heaviside_tensor = heaviside_fct(x_i)
             #heavyside_tensor = heaviside_fct(col_points)
-            plt.figure(figsize=(8, 4))
-            plt.plot(col_points, heaviside_tensor, label="Heaviside function", color="black", alpha=1.0, linewidth=2)
-            plt.grid()
-            plt.show()
+            if False:
+                plt.figure(figsize=(8, 4))
+                plt.plot(col_points, heaviside_tensor, label="Heaviside function", color="black", alpha=1.0, linewidth=2)
+                plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+                plt.grid()
+                plt.show()
             
         sample = 0
         _ = 0
