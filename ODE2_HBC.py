@@ -65,7 +65,7 @@ def plot_solution(pinn, col_points, f_x_exact, i):
         linewidth=2)
     plt.axvline(x=1, color='gray', linestyle='--')
     l2 = torch.linalg.norm(f_x_exact - f_x)
-    plt.title(f"Training step {i} , L2 error: {l2:.4e}")
+    plt.title(f"L2 error: {l2:.4e}")
     plt.xlabel("x")
     plt.ylabel("f(x)")
     plt.legend()
@@ -73,7 +73,7 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     plt.savefig("ODE2_lin1.png")
     plt.figure(2,figsize=(8, 4))
     plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
-    plt.title(f"Training step {i} , Absolute error between Analytical and PINN")
+    plt.title("Absolute error between Analytical and PINN")
     plt.xlabel("x")
     plt.ylabel("Absolute error")
     plt.grid()
@@ -218,6 +218,8 @@ def main():
                 optimiser.step()
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
+                if loss.item() < 1e-3:
+                    break
 
     plot_solution(pinn, col_points, f_x_exact, n_epochs)
     return None

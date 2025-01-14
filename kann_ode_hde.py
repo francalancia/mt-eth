@@ -422,7 +422,7 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    #plt.savefig("KANNsollog.png")
+    plt.savefig("KANNODE2.png")
     plt.figure(3,figsize=(8, 4))
     plt.plot(
         x_i,
@@ -435,34 +435,8 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.grid()
     plt.xlabel("x")
     plt.ylabel("Absolute error")
-    plt.figure(4,figsize=(8, 4))
-    plt.plot(
-        x_i,
-        y_i,
-        label="Exact solution",
-        color="black",
-        alpha=1.0,
-        linewidth=2,
-    )
-    plt.plot(
-        x_i,
-        y_hat,
-        linestyle="--",
-        label="KANN solution",
-        color="tab:green",
-        linewidth=2
-    )
-    plt.axvline(x=1, color='gray', linestyle='--')
-    plt.plot(
-        x_i,
-        error_abs,
-        label="Absolute error",
-        color="red",
-        alpha=1.0,
-        linewidth=2,
-    )
-    plt.grid()
-    plt.xlabel("x")
+    plt.title("Absolute error between Analytical and PINN")
+    plt.savefig("KANNODE2_abs.png")
     plt.show()
 #
     return None
@@ -605,19 +579,7 @@ def main():
                 loss_str = f"{loss_mean.item():0.4e}"
 
                 pbar1.set_postfix(loss=loss_str)
-                if loss_mean.item() >= previous_loss:
-                    same_loss_counter += 1
-                else:
-                    same_loss_counter = 0
-
-                previous_loss = loss_mean.item()
-                if prestop:
-                    if same_loss_counter >= 40:
-                        values[run, 6] = pbar1.format_dict["elapsed"]
-                        break
-                
-                if loss_mean.item() <= tol:
-                    values[run, 6] = pbar1.format_dict["elapsed"]
+                if loss.item() < 1e-3:
                     break
                 Tickrate = pbar1.format_dict['rate']
             
