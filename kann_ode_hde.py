@@ -416,13 +416,13 @@ def plot_solution(x_i, y_hat, y_i, l2):
         color="tab:green",
         linewidth=2
     )
-    plt.axvline(x=1, color='gray', linestyle='--')
+    plt.axvline(x=0.1, color='gray', linestyle='--')
     plt.title(f"L2-error: {l2:0.4e}")
     plt.xlabel("x")
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    plt.savefig("KANNODE2.png")
+    plt.savefig("KANNODE3.png")
     plt.figure(3,figsize=(8, 4))
     plt.plot(
         x_i,
@@ -436,7 +436,7 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.xlabel("x")
     plt.ylabel("Absolute error")
     plt.title("Absolute error between Analytical and PINN")
-    plt.savefig("KANNODE2_abs.png")
+    plt.savefig("KANNODE3_abs.png")
     plt.show()
 #
     return None
@@ -556,7 +556,7 @@ def main():
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx - 10*(j-y))
+                        residual = (dydx - 10*(h-y))
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 
@@ -582,7 +582,7 @@ def main():
                 loss_str = f"{loss_mean.item():0.4e}"
 
                 pbar1.set_postfix(loss=loss_str)
-                if loss.item() < 1e-5:
+                if loss_mean.item() < 1e-6:
                     break
                 Tickrate = pbar1.format_dict['rate']
             
