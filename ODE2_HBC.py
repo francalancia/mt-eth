@@ -29,7 +29,7 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     col_points = col_points.detach()
     f_x_exact = torch.from_numpy(f_x_exact).view(-1,1)
     plt.figure(figsize=(8, 4))
-    
+    error_abs = np.abs(f_x_exact - f_x)
     plt.rcParams.update({
     'font.size': 10,              # Base font size
     'axes.labelsize': 11,         # Axis labels
@@ -63,7 +63,7 @@ def plot_solution(pinn, col_points, f_x_exact, i):
         label="PINN solution",
         color="tab:green",
         linewidth=2)
-    plt.axvline(x=1, color='r', linestyle='--')
+    plt.axvline(x=1, color='gray', linestyle='--')
     l2 = torch.linalg.norm(f_x_exact - f_x)
     plt.title(f"Training step {i} , L2 error: {l2:.4e}")
     plt.xlabel("x")
@@ -71,7 +71,15 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     plt.legend()
     plt.grid()
     plt.savefig("ODE2_lin1.png")
+    plt.figure(2,figsize=(8, 4))
+    plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    plt.title(f"Training step {i} , Absolute error between Analytical and PINN")
+    plt.xlabel("x")
+    plt.ylabel("Absolute error")
+    plt.grid()
+    plt.savefig("ODE2_abs.png")
     plt.show()
+    
     
     return None
 
@@ -113,7 +121,7 @@ def heaviside(x):
         tensor = torch.where(x >= 1, torch.ones_like(x), torch.zeros_like(x))
         return tensor
 def collocationpoints(total_values):
-    nval1 = total_values // 3
+    nval1 = total_values // 5
     nval2 = total_values - nval1
     log_values = torch.logspace(0, torch.log10(torch.tensor(5.0)), steps=nval2, base=10)
 
@@ -130,11 +138,11 @@ def main():
     n_output = 1
     n_hidden = 32
     n_layers = 2
-    n_epochs = 15000
+    n_epochs = 10000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
-    tot_val_log = 90
+    tot_val_log = 100
     tot_val = 111
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
@@ -144,10 +152,10 @@ def main():
     f_x_exact = exact_solution(y0, col_points)
     #f_x_exact = exact_solution(y0, col_points2)
     #col_points = col_points2
-    plt.figure(figsize=(8, 4))
-    plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-    plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-    plt.grid()
+    #plt.figure(figsize=(8, 4))
+    #plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
+    #plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+    #plt.grid()
     #plt.show()
     if False:
         col_exact = torch.linspace(0,5,tot_val)
@@ -185,7 +193,7 @@ def main():
                 f_x, col_points, torch.ones_like(f_x), create_graph=True
             )[0]
             # compute the loss mean squared error
-            loss = torch.mean((df_xdx - heavyside+ f_x) ** 2)
+            loss = torch.mean((df_xdx - heavyside + f_x) ** 2)
             # backpropagate the loss
             loss.backward()
             # return the loss for the optimiser
