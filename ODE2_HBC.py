@@ -87,7 +87,7 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     
     
     return None
-def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
+def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 100):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -108,7 +108,7 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
         ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
         return line, ax,
 
-    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
+    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=100, blit=False, repeat = False)  # Change the interval here
     ani.save('PINN_training_animation.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
     plt.show()
     return None
@@ -128,9 +128,14 @@ class FCN(nn.Module):
             ]
         )
         self.fce = nn.Linear(N_HIDDEN, N_OUTPUT)
+        self.apply(self._init_weights)
         total_params = sum(p.numel() for p in self.parameters())
         print(f"Total number of parameters: {total_params}")
-
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            nn.init.zeros_(m.bias)
+    
     def forward(self, x):
         coord = x
         x = self.fcs(x)
@@ -166,13 +171,13 @@ def main():
     n_input = 1
     n_output = 1
     n_hidden = 32
-    n_layers = 2
-    n_epochs = 80000
+    n_layers = 4
+    n_epochs = 50000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
     tot_val_log = 1000
-    tot_val = 201
+    tot_val = 2001
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 1, tot_val)
@@ -206,7 +211,7 @@ def main():
         jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
     
     solutions = []
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3, weight_decay=3e-2)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
     if learning:
         def closure():
@@ -242,7 +247,7 @@ def main():
                 optimiser.step()
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
-                if _ % 10 == 0:
+                if _ % 100 == 0:
                     with torch.no_grad():
                         solutions.append(f_x.detach().numpy())
     pinn.eval()
