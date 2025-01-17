@@ -391,19 +391,19 @@ def plot_solution(x_i, y_hat, y_i, l2):
     x_i = x_i.detach().view(-1,1).numpy()
     # Plotting
     error_abs = np.abs(y_i - y_hat)
-    plt.figure(2,figsize=(8, 4))
+    plt.figure(2,figsize=(10,5))
     plt.rcParams.update({
-    'font.size': 10,              # Base font size
-    'axes.labelsize': 11,         # Axis labels
-    'xtick.labelsize': 10,        # X-axis tick labels
-    'ytick.labelsize': 10,        # Y-axis tick labels
-    'legend.fontsize': 10,        # Legend
-    'figure.titlesize': 12        # Figure title
+        'font.size': 16,              # Base font size
+        'axes.labelsize': 14,         # Axis labels
+        'xtick.labelsize': 14,        # X-axis tick labels
+        'ytick.labelsize': 14,        # Y-axis tick labels
+        'legend.fontsize': 14,        # Legend
+        'figure.titlesize': 14        # Figure title
     })
     plt.plot(
         x_i,
         y_i,
-        label="Exact solution",
+        label="Analytical solution",
         color="black",
         alpha=1.0,
         linewidth=2,
@@ -423,7 +423,7 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.legend()
     plt.grid()
     plt.savefig("KANNODE3.png")
-    plt.figure(3,figsize=(8, 4))
+    plt.figure(3,figsize=(10,5))
     plt.plot(
         x_i,
         error_abs,
@@ -560,8 +560,9 @@ def main():
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 
-                    loss = torch.mean(torch.square(residual))
-
+                    #loss = torch.mean(torch.square(residual))
+                    loss = residual
+                    
                     if autodiff is True:
                         g_lst = torch.autograd.grad(
                             outputs=residual,
@@ -582,8 +583,8 @@ def main():
                 loss_str = f"{loss_mean.item():0.4e}"
 
                 pbar1.set_postfix(loss=loss_str)
-                if loss_mean.item() < 1e-6:
-                    break
+                #if loss_mean.item() < 1e-3:
+                #    break
                 Tickrate = pbar1.format_dict['rate']
             
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")

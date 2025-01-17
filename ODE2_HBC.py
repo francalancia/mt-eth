@@ -4,9 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tqdm
 from scipy.integrate import odeint
-
+from matplotlib.animation import FuncAnimation
 torch.manual_seed(123)
 torch.set_default_dtype(torch.float64)
+plt.rcParams.update({
+    'font.size': 16,              # Base font size
+    'axes.labelsize': 14,         # Axis labels
+    'xtick.labelsize': 14,        # X-axis tick labels
+    'ytick.labelsize': 14,        # Y-axis tick labels
+    'legend.fontsize': 14,        # Legend
+    'figure.titlesize': 14        # Figure title
+})
 
 def exact_solution(y0,x):
     
@@ -21,23 +29,20 @@ def exact_solution(y0,x):
     y_heaviside = odeint(system_heaviside, y0, x)
     
     return y_heaviside
-
+def f(x):
+    if x < 0.1:
+        return np.exp(-10 * x)
+    else:
+        return 1 + (np.exp(-1) - 1) * np.exp(-10 * (x - 0.1))
 
 def plot_solution(pinn, col_points, f_x_exact, i):
     with torch.no_grad():
         f_x = pinn(col_points).detach()
     col_points = col_points.detach()
     f_x_exact = torch.from_numpy(f_x_exact).view(-1,1)
-    plt.figure(figsize=(8, 4))
+    plt.figure(1,figsize=(10, 5))
     error_abs = np.abs(f_x_exact - f_x)
-    plt.rcParams.update({
-    'font.size': 10,              # Base font size
-    'axes.labelsize': 11,         # Axis labels
-    'xtick.labelsize': 10,        # X-axis tick labels
-    'ytick.labelsize': 10,        # Y-axis tick labels
-    'legend.fontsize': 10,        # Legend
-    'figure.titlesize': 12        # Figure title
-    })
+
     """
     plt.scatter(
         col_points.detach()[:, 0],
@@ -70,19 +75,43 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    #plt.savefig("ODE2_lin2.png")
-    plt.figure(2,figsize=(8, 4))
+    plt.savefig("ODE2_lin2.png")
+    plt.figure(2,figsize=(10,5))
     plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     plt.title("Absolute error between Analytical and PINN")
     plt.xlabel("x")
     plt.ylabel("Absolute error")
     plt.grid()
-    #plt.savefig("ODE2_abs2.png")
+    plt.savefig("ODE2_abs2.png")
     plt.show()
     
     
     return None
+def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
+    col_exact = col_exact.detach()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
+    ax.axvline(x=0.1, color='r', linestyle='--', label='x = 0.1')
+    line, = ax.plot(col_exact.numpy(), solutions[0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    solutions = np.array(solutions).squeeze()
+    f_x_exact = f_x_exact.transpose()
+    #ax.set_xlim(0, 1)
+    #ax.set_ylim(0, 1)
+    ax.set_xlabel("x")
+    ax.set_ylabel("f(x)")
+    #ax.legend(loc="upper left")
+    ax.grid(True)
+    i = 0
+    def animate(i):
+        line.set_ydata(solutions[i])  # update the data
+        epoch = i*interval
+        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
+        return line, ax,
 
+    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
+    ani.save('PINN_training_animation.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
+    plt.show()
+    return None
 
 class FCN(nn.Module):
     "Defines a fully-connected network in PyTorch"
@@ -136,14 +165,14 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 24
+    n_hidden = 32
     n_layers = 2
-    n_epochs = 15000
+    n_epochs = 80000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
-    tot_val_log = 160
-    tot_val = 301
+    tot_val_log = 1000
+    tot_val = 201
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 1, tot_val)
@@ -152,11 +181,8 @@ def main():
     f_x_exact = exact_solution(y0, col_points)
     #f_x_exact = exact_solution(y0, col_points2)
     #col_points = col_points2
-    #plt.figure(figsize=(8, 4))
-    #plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-    #plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-    #plt.grid()
-    #plt.show()
+    #plt.figure(figsize=(10, 5))
+    #plt.plot(col_points, f_x_exact, label="Exact solution", color="red", alpha=1.0, linewidth=2)
     if False:
         col_exact = torch.linspace(0,5,tot_val)
         col_exact2 = collocationpoints(tot_val_log)
@@ -177,8 +203,9 @@ def main():
     col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
     with torch.no_grad():
         heavyside = heaviside(col_points)
+        jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
     
-
+    solutions = []
     optimiser = torch.optim.AdamW(pinn.parameters(), lr=2e-3, weight_decay=3e-2)
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
     if learning:
@@ -197,12 +224,10 @@ def main():
             loss.backward()
             # return the loss for the optimiser
             return loss
-        
         with tqdm.trange(n_epochs) as pbar:
             for _ in pbar:
                 #loss = optimiser.step(closure)
                 optimiser.zero_grad()
-                jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
                 # compute loss%
                 f_x = pinn(col_points)
                 df_xdx = torch.autograd.grad(
@@ -210,17 +235,37 @@ def main():
                 )[
                     0
                 ]  # (30, 1)
-                loss = torch.mean((df_xdx - 10*(-f_x+jump)) ** 2)
+                loss = torch.mean((df_xdx - 10*(-f_x+heavyside)) ** 2)
 
                 # backpropagate loss, take optimiser step
                 loss.backward()
                 optimiser.step()
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
-                if loss.item() < 1e-4:
-                    break
+                if _ % 10 == 0:
+                    with torch.no_grad():
+                        solutions.append(f_x.detach().numpy())
+    pinn.eval()
+    with torch.no_grad():
+        f_x = pinn(col_points)
+        solutions.append(f_x.detach().numpy())
+
+    
+    create_animation(pinn, solutions, col_points, f_x_exact)
 
     plot_solution(pinn, col_points, f_x_exact, n_epochs)
+    if False:
+        x_values = np.linspace(0, 1, 4001)
+        y_values = np.vectorize(f)(x_values)
+        plt.plot(x_values, y_values, label='f(x)', color='blue')
+        plt.axvline(x=0.1, color='gray',label= 'step', linestyle='--')
+        plt.title(r'Solution of $ \frac{df}{dx} = 10*(H(x-0.1)-f(x))$, B.C. $f(0) = 1$')  
+        plt.xlabel('x')
+        plt.ylabel('f(x)')
+        plt.grid(True)
+        plt.legend()
+        plt.savefig('ODE2_HBCanalytical.png')
+        plt.show()
     return None
 
 
