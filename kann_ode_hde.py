@@ -9,10 +9,19 @@ import numpy as np
 from scipy.integrate import odeint
 from matplotlib.animation import FuncAnimation
 import datetime
-timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
+# set the default plotting sizes
+plt.rcParams.update({
+        'font.size': 16,              # Base font size
+        'axes.labelsize': 14,         # Axis labels
+        'xtick.labelsize': 14,        # X-axis tick labels
+        'ytick.labelsize': 14,        # Y-axis tick labels
+        'legend.fontsize': 14,        # Legend
+        'figure.titlesize': 14        # Figure title
+    })
+
 
 class LagrangeKANN(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
@@ -389,19 +398,12 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
-def plot_solution(x_i, y_hat, y_i, l2): 
+def plot_solution(x_i, y_hat, y_i, l2, timestamp): 
     x_i = x_i.detach().view(-1,1).numpy()
     # Plotting
     error_abs = np.abs(y_i - y_hat)
     plt.figure(2,figsize=(10,5))
-    plt.rcParams.update({
-        'font.size': 16,              # Base font size
-        'axes.labelsize': 14,         # Axis labels
-        'xtick.labelsize': 14,        # X-axis tick labels
-        'ytick.labelsize': 14,        # Y-axis tick labels
-        'legend.fontsize': 14,        # Legend
-        'figure.titlesize': 14        # Figure title
-    })
+    plt.ylim(0.3, 1.1)
     plt.plot(
         x_i,
         y_i,
@@ -424,7 +426,7 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    plt.savefig("KANNODE3.png")
+    plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANNODE_{timestamp}.png")
     plt.figure(3,figsize=(10,5))
     plt.plot(
         x_i,
@@ -438,8 +440,8 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.xlabel("x")
     plt.ylabel("Absolute error")
     plt.title("Absolute error between Analytical and PINN")
-    plt.savefig("KANNODE3_abs.png")
-    plt.show()
+    plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANNODE_abs_{timestamp}.png")
+    #plt.show()
 
     return None
 def collocationpoints(total_values):
@@ -453,15 +455,14 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
+def create_animation(pinn,solutions, col_exact, f_x_exact,timestamp, interval = 10):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
     ax.axvline(x=0.1, color='r', linestyle='--', label='x = 0.1')
     line, = ax.plot(col_exact.numpy(), solutions[:,0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
-    f_x_exact = f_x_exact
-    #ax.set_xlim(0, 1)
-    #ax.set_ylim(0, 1)
+    #ax.set_xlim(0.4, 1)
+    ax.set_ylim(0.3, 1.1)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
     #ax.legend(loc="upper left")
@@ -470,12 +471,12 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
     def animate(i):
         line.set_ydata(solutions[:,i])  # update the data
         epoch = i*interval
-        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i]):.4e}")
+        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e}")
         return line, ax,
 
-    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
-    #ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
-    plt.show()
+    ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=10, blit=False, repeat = False)  # Change the interval here
+    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
+    #plt.show()
     return None
 
 
@@ -496,15 +497,16 @@ def main():
     prestop = parameters_ode.prestop
     save = parameters_ode.save
     track_values = parameters_ode.track_values
-    n_elements = int((n_samples - 2) / n_order)
     
     # initialize tensor to store values
     if track_values:
         values = torch.zeros((runs, 9))
         loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
         rval = 0
-    
+    values = np.zeros((runs, 5))
+    timestamps = []
     for run in range(runs):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         print(f"\nrun at iteration {run+1}")
         same_loss_counter = 0
         previous_loss = 0
@@ -561,6 +563,9 @@ def main():
         sample = 0
         _ = 0
         loss_mean = 0
+        loss = 0
+        residual = 0 
+        n_elements = int((n_samples - 2) / n_order)
         # initialize the model
         model = KANN(
             n_width=n_width,
@@ -630,14 +635,8 @@ def main():
                             solutions = vec
                         else:
                             solutions = np.hstack([solutions, vec])
-        with torch.no_grad():
-            sampleeval = 0
-            vec = torch.zeros(n_samples)
-            for sampleeval in range(n_samples):
-                x = x_i[sampleeval].unsqueeze(-1)
-                vec[sampleeval] = 1+x*model(x)
-            vec = vec.detach().numpy().reshape(-1,1)
-            solutions = np.hstack([solutions, vec])
+        
+
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
@@ -652,10 +651,22 @@ def main():
         y_hat = y_hat.view(-1,1).numpy()
         l2 = np.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
+        solutions = np.hstack([solutions, y_hat])
 
-    create_animation(model,solutions, x_i, f_x_exact, interval = 10)
-    plot_solution(x_i,y_hat, y_i, l2)
-
+        create_animation(model,solutions, x_i, y_i,timestamp, interval = 10)
+        plot_solution(x_i,y_hat, y_i, l2,timestamp)
+        plt.close('all')
+        print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
+        values[run, 0] = n_width
+        values[run, 1] = n_order
+        values[run, 2] = n_samples
+        values[run, 3] = loss_mean
+        values[run, 4] = l2
+        timestamps.append(timestamp)
+        n_samples = n_samples + 10
+    df = pd.DataFrame(values, columns=['n_width', 'n_order', 'n_samples', 'loss', 'l2'])
+    df['timestamp'] = timestamps
+    df.to_excel(r"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/data_report_sampels.xlsx", index=False)
     return None
 
 if __name__ == "__main__":
