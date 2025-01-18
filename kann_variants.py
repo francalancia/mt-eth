@@ -1148,6 +1148,7 @@ def main():
 
             else:
                 y_hat[sample] = 1 + x * model(x,_,sample)
+                #y_hat[sample] = model(x,_,sample)
         
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")

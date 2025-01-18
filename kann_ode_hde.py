@@ -7,7 +7,9 @@ import parameters_ode
 import pandas as pd
 import numpy as np
 from scipy.integrate import odeint
-
+from matplotlib.animation import FuncAnimation
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
@@ -451,6 +453,37 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
+def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
+    col_exact = col_exact.detach()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
+    ax.axvline(x=0.1, color='r', linestyle='--', label='x = 0.1')
+    line, = ax.plot(col_exact.numpy(), solutions[0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    solutions = solutions.reshape(-1,1)
+    f_x_exact = f_x_exact.transpose()
+    #ax.set_xlim(0, 1)
+    #ax.set_ylim(0, 1)
+    ax.set_xlabel("x")
+    ax.set_ylabel("f(x)")
+    #ax.legend(loc="upper left")
+    ax.grid(True)
+    i = 0
+    def animate(i):
+        line.set_ydata(solutions[i])  # update the data
+        epoch = i*interval
+        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
+        return line, ax,
+
+    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
+    #ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
+    plt.show()
+    return None
+
+
+
+
+
+
 def main():
     """Execute main routine."""
     n_width = parameters_ode.n_width
@@ -540,7 +573,7 @@ def main():
             autodiff=autodiff,
             speedup=speedup
         )
-
+        solutions = np.array([])
         with tqdm.trange(n_epochs) as pbar1:
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
@@ -560,8 +593,8 @@ def main():
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 
-                    #loss = torch.mean(torch.square(residual))
-                    loss = residual
+                    loss = torch.mean(torch.square(residual))
+                    #loss = residual
                     
                     if autodiff is True:
                         g_lst = torch.autograd.grad(
@@ -586,6 +619,13 @@ def main():
                 #if loss_mean.item() < 1e-3:
                 #    break
                 Tickrate = pbar1.format_dict['rate']
+                if _ % 10 == 0:
+                    with torch.no_grad():
+                        sampleeval = 0 
+                        for sampleeval in range(n_samples):
+                            x = x_i[sampleeval].unsqueeze(-1)
+                            f_x = model(x)
+                            solutions = np.append(solutions, f_x.detach().numpy())
             
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
@@ -596,11 +636,13 @@ def main():
             y_hat = torch.zeros_like(x_i)
             for sample in range(n_samples):
                 x = x_i[sample].unsqueeze(-1)
-                y_hat[sample] = 1 + x * model(x)
+                y_hat[sample] = model(x)
+                #y_hat[sample] = 1 + x * model(x)
         y_hat = y_hat.view(-1,1).numpy()
         l2 = np.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
 
+    create_animation(model,solutions, x_i, f_x_exact, interval = 10)
     plot_solution(x_i,y_hat, y_i, l2)
 
     return None
