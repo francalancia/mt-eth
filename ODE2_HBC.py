@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import tqdm
 from scipy.integrate import odeint
 from matplotlib.animation import FuncAnimation
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 torch.manual_seed(123)
 torch.set_default_dtype(torch.float64)
 plt.rcParams.update({
@@ -75,19 +77,19 @@ def plot_solution(pinn, col_points, f_x_exact, i):
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    plt.savefig("ODE2_lin2.png")
+    plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_{timestamp}.png")
     plt.figure(2,figsize=(10,5))
     plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     plt.title("Absolute error between Analytical and PINN")
     plt.xlabel("x")
     plt.ylabel("Absolute error")
     plt.grid()
-    plt.savefig("ODE2_abs2.png")
-    plt.show()
+    plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
+    #plt.show()
     
     
-    return None
-def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 100):
+    return l2
+def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -108,9 +110,9 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 100):
         ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
         return line, ax,
 
-    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=100, blit=False, repeat = False)  # Change the interval here
-    ani.save('PINN_training_animation.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
-    plt.show()
+    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
+    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
+    #plt.show()
     return None
 
 class FCN(nn.Module):
@@ -170,14 +172,14 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 32
+    n_hidden = 128
     n_layers = 4
-    n_epochs = 50000
+    n_epochs = 40000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
     tot_val_log = 1000
-    tot_val = 2001
+    tot_val = 5001
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 1, tot_val)
@@ -211,20 +213,31 @@ def main():
         jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
     
     solutions = []
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
-    #optimiser = torch.optim.LBFGS(pinn.parameters(), lr=1e-2)
+    #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
+    """
+    optimiser = torch.optim.LBFGS(
+    pinn.parameters(),
+    lr=1e-2,            # smaller than the default 1.0
+    max_iter=50,        # or up to 50 if you can afford it
+    history_size=50,    # if memory is limited, else 50-100 is okay
+    tolerance_grad=1e-7,
+    tolerance_change=1e-9,
+    line_search_fn='strong_wolfe'
+    )
+    """
     if learning:
         def closure():
             # zero the gradients
             optimiser.zero_grad()
             # compute model output for the collocation points
-            f_x = 1+col_points*pinn(col_points)
+            f_x =pinn(col_points)
             # compute the grad of the output w.r.t. to the collocation points
             df_xdx = torch.autograd.grad(
                 f_x, col_points, torch.ones_like(f_x), create_graph=True
             )[0]
             # compute the loss mean squared error
-            loss = torch.mean((df_xdx - heavyside + f_x) ** 2)
+            loss = torch.mean((df_xdx - 10*(heavyside - f_x)) ** 2)
             # backpropagate the loss
             loss.backward()
             # return the loss for the optimiser
@@ -232,6 +245,7 @@ def main():
         with tqdm.trange(n_epochs) as pbar:
             for _ in pbar:
                 #loss = optimiser.step(closure)
+                
                 optimiser.zero_grad()
                 # compute loss%
                 f_x = pinn(col_points)
@@ -241,14 +255,15 @@ def main():
                     0
                 ]  # (30, 1)
                 loss = torch.mean((df_xdx - 10*(-f_x+heavyside)) ** 2)
-
                 # backpropagate loss, take optimiser step
                 loss.backward()
+                
                 optimiser.step()
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
-                if _ % 100 == 0:
+                if _ % 10 == 0:
                     with torch.no_grad():
+                        f_x = pinn(col_points)
                         solutions.append(f_x.detach().numpy())
     pinn.eval()
     with torch.no_grad():
@@ -258,7 +273,8 @@ def main():
     
     create_animation(pinn, solutions, col_points, f_x_exact)
 
-    plot_solution(pinn, col_points, f_x_exact, n_epochs)
+    l2 = plot_solution(pinn, col_points, f_x_exact, n_epochs)
+    print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
     if False:
         x_values = np.linspace(0, 1, 4001)
         y_values = np.vectorize(f)(x_values)
