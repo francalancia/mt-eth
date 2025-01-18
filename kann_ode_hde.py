@@ -440,7 +440,7 @@ def plot_solution(x_i, y_hat, y_i, l2):
     plt.title("Absolute error between Analytical and PINN")
     plt.savefig("KANNODE3_abs.png")
     plt.show()
-#
+
     return None
 def collocationpoints(total_values):
     nval1 = total_values // 5
@@ -458,9 +458,8 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
     ax.axvline(x=0.1, color='r', linestyle='--', label='x = 0.1')
-    line, = ax.plot(col_exact.numpy(), solutions[0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
-    solutions = solutions.reshape(-1,1)
-    f_x_exact = f_x_exact.transpose()
+    line, = ax.plot(col_exact.numpy(), solutions[:,0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    f_x_exact = f_x_exact
     #ax.set_xlim(0, 1)
     #ax.set_ylim(0, 1)
     ax.set_xlabel("x")
@@ -469,9 +468,9 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
     ax.grid(True)
     i = 0
     def animate(i):
-        line.set_ydata(solutions[i])  # update the data
+        line.set_ydata(solutions[:,i])  # update the data
         epoch = i*interval
-        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
+        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i]):.4e}")
         return line, ax,
 
     ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
@@ -573,7 +572,7 @@ def main():
             autodiff=autodiff,
             speedup=speedup
         )
-        solutions = np.array([])
+        solutions = np.empty((n_samples,1))
         with tqdm.trange(n_epochs) as pbar1:
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
@@ -621,12 +620,24 @@ def main():
                 Tickrate = pbar1.format_dict['rate']
                 if _ % 10 == 0:
                     with torch.no_grad():
-                        sampleeval = 0 
+                        sampleeval = 0
+                        vec = torch.zeros(n_samples)
                         for sampleeval in range(n_samples):
                             x = x_i[sampleeval].unsqueeze(-1)
-                            f_x = model(x)
-                            solutions = np.append(solutions, f_x.detach().numpy())
-            
+                            vec[sampleeval] = 1+x*model(x)
+                        vec = vec.detach().numpy().reshape(-1,1)
+                        if _ == 0:
+                            solutions = vec
+                        else:
+                            solutions = np.hstack([solutions, vec])
+        with torch.no_grad():
+            sampleeval = 0
+            vec = torch.zeros(n_samples)
+            for sampleeval in range(n_samples):
+                x = x_i[sampleeval].unsqueeze(-1)
+                vec[sampleeval] = 1+x*model(x)
+            vec = vec.detach().numpy().reshape(-1,1)
+            solutions = np.hstack([solutions, vec])
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
             print(f"Same loss counter: {same_loss_counter}")
@@ -636,8 +647,8 @@ def main():
             y_hat = torch.zeros_like(x_i)
             for sample in range(n_samples):
                 x = x_i[sample].unsqueeze(-1)
-                y_hat[sample] = model(x)
-                #y_hat[sample] = 1 + x * model(x)
+                #y_hat[sample] = model(x)
+                y_hat[sample] = 1 + x * model(x)
         y_hat = y_hat.view(-1,1).numpy()
         l2 = np.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
