@@ -5,12 +5,62 @@ import torch
 import tqdm
 import parameters
 import pandas as pd
+import numpy as np
 from scipy.integrate import odeint
 
 from torch.autograd import Function
 
 # set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
+def plot_solution(save,x_i, y_hat, y_i, l2): 
+    x_i = x_i.detach().view(-1,1).numpy()
+    y_i = y_i.detach().view(-1,1).numpy()
+    y_hat = y_hat.detach().view(-1,1).numpy()
+    # Plotting
+    error_abs = np.abs(y_i - y_hat)
+    plt.figure(2,figsize=(10,5))
+    #plt.ylim(0.3, 1.1)
+    plt.plot(
+        x_i,
+        y_i,
+        label="Analytical solution",
+        color="black",
+        alpha=1.0,
+        linewidth=2,
+    )
+    plt.plot(
+        x_i,
+        y_hat,
+        linestyle="--",
+        label="KANN solution",
+        color="tab:green",
+        linewidth=2
+    )
+    plt.title(f"L2-error: {l2:0.4e}")
+    plt.xlabel("x")
+    plt.ylabel("f(x)")
+    plt.legend()
+    plt.grid()
+    if save: 
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data/ODE1.png")
+    plt.figure(3,figsize=(10,5))
+    plt.plot(
+        x_i,
+        error_abs,
+        label="Absolute error",
+        color="red",
+        alpha=1.0,
+        linewidth=2,
+    )
+    plt.grid()
+    plt.xlabel("x")
+    plt.ylabel("Absolute error")
+    plt.title("Absolute error between Analytical and PINN")
+    if save: 
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data/ODE1_abs.png")
+    plt.show()
+
+    return None
 
 class LagrangeKANN(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
@@ -1164,14 +1214,8 @@ def main():
         values[run, 8] = Tickrate
         #n_samples = n_samples + 5
 
-    plt.figure(0)
-    plt.plot(y_hat.detach().numpy(), label="K(x)", c="red", linestyle="-")
-    plt.plot(y_i.detach().numpy(), label="f(x)", c="black", linestyle="--")
-    plt.title(f"L2-error: {l2.detach().numpy():0.4e}")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig("ode.pdf")
-    plt.show()
+    l2 = l2.detach().numpy()
+    plot_solution(save,x_i, y_hat, y_i, l2)
     if save:
         save_excel(values, autodiff, regression, speedup, prestop)
         save_excel(loss_tracking, autodiff, regression, speedup, prestop)
