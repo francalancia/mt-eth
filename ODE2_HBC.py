@@ -111,8 +111,8 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
         return line, ax,
 
     ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
-    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
-    #plt.show()
+    #ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
+    plt.show()
     return None
 
 class FCN(nn.Module):
@@ -172,14 +172,14 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 128
-    n_layers = 4
-    n_epochs = 40000
+    n_hidden = 64
+    n_layers = 2
+    n_epochs = 400
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
     tot_val_log = 1000
-    tot_val = 5001
+    tot_val = 51
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 1, tot_val)

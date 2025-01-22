@@ -7,9 +7,17 @@ import parameters
 import pandas as pd
 import numpy as np
 from scipy.integrate import odeint
-
+from matplotlib.animation import FuncAnimation
+import datetime
 from torch.autograd import Function
-
+plt.rcParams.update({
+    'font.size': 16,              # Base font size
+    'axes.labelsize': 14,         # Axis labels
+    'xtick.labelsize': 14,        # X-axis tick labels
+    'ytick.labelsize': 14,        # Y-axis tick labels
+    'legend.fontsize': 14,        # Legend
+    'figure.titlesize': 14        # Figure title
+    })
 # set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
 def plot_solution(save,x_i, y_hat, y_i, l2): 
@@ -18,7 +26,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2):
     y_hat = y_hat.detach().view(-1,1).numpy()
     # Plotting
     error_abs = np.abs(y_i - y_hat)
-    plt.figure(2,figsize=(10,5))
+    plt.figure(2,figsize=(10, 5))
     #plt.ylim(0.3, 1.1)
     plt.plot(
         x_i,
@@ -61,7 +69,31 @@ def plot_solution(save,x_i, y_hat, y_i, l2):
     plt.show()
 
     return None
+def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 1):
+    col_exact = col_exact.detach()
+    f_x_exact = f_x_exact.detach().numpy()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
+    line, = ax.plot(col_exact.numpy(), solutions[:,0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    #ax.set_xlim(0.4, 1)
+    #ax.set_ylim(1.0, 3.0)
+    ax.set_xlabel("x")
+    ax.set_ylabel("f(x)")
+    #ax.legend(loc="upper left")
+    plt.legend()
+    ax.grid(True)
+    i = 0
+    def animate(i):
+        line.set_ydata(solutions[:,i])  # update the data
+        epoch = i*interval
+        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i]):.4e}")
+        return line, ax,
 
+    ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
+    #if save: 
+    #    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
+    plt.show()
+    return None
 class LagrangeKANN(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
@@ -1055,6 +1087,7 @@ def main():
     rval = 0
     
     for run in range(runs):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         print(f"\nrun at iteration {run+1}")
         same_loss_counter = 0
         previous_loss = 0
@@ -1092,7 +1125,7 @@ def main():
             autodiff=autodiff,
             speedup=speedup
         )
-
+        solutions = np.empty((n_samples,1))
         with tqdm.trange(n_epochs) as pbar1:
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
@@ -1181,6 +1214,16 @@ def main():
                     loss_tracking[rval,0] = _
                     loss_tracking[rval,1] = loss_mean
                     rval += 1
+                if _ % 1 == 0:
+                    vec = torch.zeros_like(x_i)
+                    for sample in range(n_samples):
+                        x = x_i[sample].unsqueeze(-1)
+                        vec[sample] = 1 + x * model(x,_,sample)
+                    vec = vec.detach().numpy().reshape(-1,1)
+                    if _ == 0:
+                        solutions = vec
+                    else:
+                        solutions = np.hstack([solutions, vec])
         loss_tracking[rval,0] = _
         loss_tracking[rval,1] = loss_mean
             
@@ -1198,7 +1241,6 @@ def main():
 
             else:
                 y_hat[sample] = 1 + x * model(x,_,sample)
-                #y_hat[sample] = model(x,_,sample)
         
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
@@ -1211,12 +1253,15 @@ def main():
         values[run, 5] = l2
         values[run, 6] = _
         values[run, 7] = pbar1.format_dict["elapsed"]
-        values[run, 8] = Tickrate
+        #values[run, 8] = Tickrate
         #n_samples = n_samples + 5
 
+    y_hat2 = y_hat.detach().numpy().reshape(-1,1)
+    solutions = np.hstack([solutions, y_hat2])
     l2 = l2.detach().numpy()
+    create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 1)
     plot_solution(save,x_i, y_hat, y_i, l2)
-    if save:
+    if False:
         save_excel(values, autodiff, regression, speedup, prestop)
         save_excel(loss_tracking, autodiff, regression, speedup, prestop)
     

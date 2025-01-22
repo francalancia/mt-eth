@@ -6,6 +6,6 @@ tol = 1e-26
 autodiff = True
 speedup = False
 prestop = False
-save = True
+save = False
 track_values = False
 runs = 1

@@ -457,7 +457,7 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 10):
+def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 1):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -477,10 +477,10 @@ def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interv
         ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e}")
         return line, ax,
 
-    ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=200, blit=False, repeat = False)  # Change the interval here
-    if save: 
-        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
-    #plt.show()
+    ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
+    #if save: 
+    #    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
+    plt.show()
     return None
 
 
@@ -627,7 +627,7 @@ def main():
                 #if loss_mean.item() < 1e-3:
                 #    break
                 Tickrate = pbar1.format_dict['rate']
-                if _ % 10 == 0:
+                if _ % 1 == 0:
                     with torch.no_grad():
                         sampleeval = 0
                         vec = torch.zeros(n_samples)
@@ -656,16 +656,8 @@ def main():
         l2 = np.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
         solutions = np.hstack([solutions, y_hat])
-        print(x_i)
-        print(y_i)
-        print(y_hat)
-        print(y_i-y_hat)
-        print(l2)
-        print(loss_mean)        
         
-        
-        
-        create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 10)
+        create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 1)
         plot_solution(save,x_i,y_hat, y_i, l2,timestamp)
         plt.close('all')
         print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
