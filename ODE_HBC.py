@@ -6,15 +6,7 @@ import tqdm
 from matplotlib.animation import FuncAnimation
 torch.manual_seed(123)
 torch.set_default_dtype(torch.float64)
-
-def exact_solution(x):
-    y = np.exp(x)
-    return y
-
-
-def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
-    f_x = pinn(col_exact).detach()
-    plt.rcParams.update({
+plt.rcParams.update({
     'font.size': 16,              # Base font size
     'axes.labelsize': 14,         # Axis labels
     'xtick.labelsize': 14,        # X-axis tick labels
@@ -22,6 +14,18 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     'legend.fontsize': 14,        # Legend
     'figure.titlesize': 14        # Figure title
     })
+def exact_solution(x):
+    y = np.exp(x)
+    return y
+
+
+def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
+    f_x_exact = f_x_exact.detach().numpy()
+    with torch.no_grad():
+        f_x = pinn(col_exact).detach().numpy()
+    error_abs = np.abs(f_x_exact - f_x)
+    col_exact = col_exact.detach().numpy()
+    col_points = col_points.detach().numpy()
     plt.figure(figsize=(10, 5))
     plt.plot(
         col_exact[:, 0],
@@ -31,7 +35,7 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
         alpha=1.0,
         linewidth=2,
     )
-    l2 = torch.linalg.norm(f_x_exact - f_x)
+    l2 = np.linalg.norm(f_x_exact - f_x)
     plt.plot(col_exact[:, 0], f_x[:, 0], linestyle = "--" ,label="PINN solution", color="tab:green", linewidth=2)
     plt.title(f"Solution of $f(x) = e^x$, B.C. $f(0) = 1$, l2 = {l2:.4e}")
     plt.xlabel("x")
@@ -39,7 +43,14 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     plt.ylim(0,3)
     plt.legend(loc = "upper left")
     plt.grid()
-    plt.savefig("ODE_analytical.png")
+    plt.savefig(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1.png', dpi = 600)
+    plt.figure(2,figsize=(10,5))
+    plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    plt.title("Absolute error between Analytical and PINN")
+    plt.xlabel("x")
+    plt.ylabel("Absolute error")
+    plt.grid()
+    plt.savefig(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1_abs.png', dpi = 600)
     plt.show()
 
     return None
@@ -55,7 +66,7 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 1):
     ax.set_ylim(0, 3.0)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
-    #ax.legend(loc="upper left")
+    ax.legend(loc="upper left")
     ax.grid(True)
     i = 0
     def animate(i):
@@ -65,7 +76,7 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 1):
         return line, ax,
 
     ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
-    #ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
+    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1_animation.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
     plt.show()
     return None
 
@@ -106,25 +117,25 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 28
+    n_hidden = 24
     n_layers = 2
-    n_epochs = 2
+    n_epochs = 100
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
     # define collocation points
-    col_points = torch.linspace(0, 1, 50).view(-1, 1).requires_grad_(True)
+    col_points = torch.linspace(0, 1, 60).view(-1, 1).requires_grad_(True)
 
     # exact solution
-    col_exact = torch.linspace(0, 1, 50).view(-1, 1)
+    col_exact = torch.linspace(0, 1, 60).view(-1, 1)
     f_x_exact = exact_solution(col_exact)
 
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
-    lr=1e-1,            # smaller than the default 1.0
-    max_iter=50,        # or up to 50 if you can afford it
-    history_size=50,    # if memory is limited, else 50-100 is okay
+    lr=1e-01,            # smaller than the default 1.0
+    max_iter=30,        # or up to 50 if you can afford it
+    history_size=120,    # if memory is limited, else 50-100 is okay
     tolerance_grad=1e-7,
     tolerance_change=1e-9,
     line_search_fn='strong_wolfe'
