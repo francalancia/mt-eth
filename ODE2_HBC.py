@@ -21,11 +21,11 @@ plt.rcParams.update({
 def exact_solution(y0,x):
     
     def heaviside(x):
-        return 1 if x >= 0.1 else 0
+        return 1 if x >= 1.0 else 0
     
     def system_heaviside(y,x):
         H = heaviside(x)
-        dydx = 10*(H - y)
+        dydx = (H - y)
         return dydx
     
     y_heaviside = odeint(system_heaviside, y0, x)
@@ -70,22 +70,23 @@ def plot_solution(pinn, col_points, f_x_exact, i):
         label="PINN solution",
         color="tab:green",
         linewidth=2)
-    plt.axvline(x=0.1, color='gray', linestyle='--')
+    plt.axvline(x=1.0, color='gray', linestyle='--')
     l2 = torch.linalg.norm(f_x_exact - f_x)
     plt.title(f"L2 error: {l2:.4e}")
     plt.xlabel("x")
     plt.ylabel("f(x)")
     plt.legend()
     plt.grid()
-    plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_{timestamp}.png")
+    #plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_{timestamp}.png")
     plt.figure(2,figsize=(10,5))
     plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     plt.title("Absolute error between Analytical and PINN")
     plt.xlabel("x")
+    plt.xlim(0.15, 1.0)
     plt.ylabel("Absolute error")
     plt.grid()
-    plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
-    #plt.show()
+    #plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
+    plt.show()
     
     
     return l2
@@ -112,7 +113,7 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
 
     ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
     #ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
-    plt.show()
+    #plt.show()
     return None
 
 class FCN(nn.Module):
@@ -120,7 +121,7 @@ class FCN(nn.Module):
 
     def __init__(self, N_INPUT, N_OUTPUT, N_HIDDEN, N_LAYERS):
         super().__init__()
-        activation = nn.Tanh
+        activation = nn.Sigmoid
         self.fcs = nn.Sequential(*[nn.Linear(N_INPUT, N_HIDDEN), activation()])
         # creates identical hidden layers N_layers-1, fully connected with activation function
         self.fch = nn.Sequential(
@@ -154,7 +155,7 @@ class FCN(nn.Module):
         return 1 + coord*x
 
 def heaviside(x):
-        tensor = torch.where(x >= 0.1, torch.ones_like(x), torch.zeros_like(x))
+        tensor = torch.where(x >= 1.0, torch.ones_like(x), torch.zeros_like(x))
         return tensor
 def collocationpoints(total_values):
     nval1 = total_values // 5
@@ -173,16 +174,16 @@ def main():
     n_input = 1
     n_output = 1
     n_hidden = 64
-    n_layers = 2
+    n_layers = 4
     n_epochs = 400
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
-    tot_val_log = 1000
-    tot_val = 51
+    tot_val_log = 701
+    tot_val = 3001
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
-    col_points = np.linspace(0, 1, tot_val)
+    col_points = np.linspace(0, 10, tot_val)
     # exact solution
     y0 = 1
     f_x_exact = exact_solution(y0, col_points)
@@ -214,18 +215,18 @@ def main():
     
     solutions = []
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
-    """
+    #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
+    
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
     lr=1e-2,            # smaller than the default 1.0
     max_iter=50,        # or up to 50 if you can afford it
-    history_size=50,    # if memory is limited, else 50-100 is okay
+    history_size=100,    # if memory is limited, else 50-100 is okay
     tolerance_grad=1e-7,
     tolerance_change=1e-9,
     line_search_fn='strong_wolfe'
     )
-    """
+    
     if learning:
         def closure():
             # zero the gradients
@@ -237,15 +238,15 @@ def main():
                 f_x, col_points, torch.ones_like(f_x), create_graph=True
             )[0]
             # compute the loss mean squared error
-            loss = torch.mean((df_xdx - 10*(heavyside - f_x)) ** 2)
+            loss = torch.mean((df_xdx -(heavyside - f_x)) ** 2)
             # backpropagate the loss
             loss.backward()
             # return the loss for the optimiser
             return loss
         with tqdm.trange(n_epochs) as pbar:
             for _ in pbar:
-                #loss = optimiser.step(closure)
-                
+                loss = optimiser.step(closure)
+                """
                 optimiser.zero_grad()
                 # compute loss%
                 f_x = pinn(col_points)
@@ -265,13 +266,16 @@ def main():
                     with torch.no_grad():
                         f_x = pinn(col_points)
                         solutions.append(f_x.detach().numpy())
+                """
+                #optimiser.step()
+                pbar.set_postfix(loss=f"{loss.item():.4e}")
     pinn.eval()
     with torch.no_grad():
         f_x = pinn(col_points)
         solutions.append(f_x.detach().numpy())
 
     
-    create_animation(pinn, solutions, col_points, f_x_exact)
+    #create_animation(pinn, solutions, col_points, f_x_exact)
 
     l2 = plot_solution(pinn, col_points, f_x_exact, n_epochs)
     print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
