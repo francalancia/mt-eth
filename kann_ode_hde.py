@@ -23,7 +23,329 @@ plt.rcParams.update({
         'figure.titlesize': 14        # Figure title
     })
 
+class LagrangeKANNinner(torch.nn.Module):
+    """A KANN layer using n-th order Lagrange polynomials."""
 
+    def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
+        """Initialize."""
+        super(LagrangeKANNinner, self).__init__()
+        self.n_width = n_width
+        self.n_order = n_order
+        self.n_elements = n_elements
+        self.n_nodes = n_elements * n_order + 1
+        self.n_samples = n_samples
+        self.x_min = x_min
+        self.x_max = x_max
+
+        self.weight = torch.nn.parameter.Parameter(
+            torch.zeros((self.n_width, self.n_nodes))
+        )
+        
+        self.phi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+        self.dphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+        self.ddphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+
+    def lagrange(self, x, n_order):
+        """Lagrange polynomials."""
+        nodes = torch.linspace(-1.0, 1.0, n_order + 1)
+
+        p_list = torch.zeros(
+            (
+                x.shape[0],
+                x.shape[1],
+                n_order + 1,
+            )
+        )
+
+        for j in range(n_order + 1):
+            p = 1.0
+            for m in range(n_order + 1):
+                if j != m:
+                    p *= (x - nodes[m]) / (nodes[j] - nodes[m])
+            p_list[:, :, j] = p
+
+        return p_list
+
+    def dlagrange(self, x, n_order):
+        """Lagrange polynomials."""
+        nodes = torch.linspace(-1.0, 1.0, n_order + 1)
+
+        dp_list = torch.zeros(
+            (
+                x.shape[0],
+                x.shape[1],
+                n_order + 1,
+            )
+        )
+
+        for j in range(n_order + 1):
+            y = 0.0
+            for i in range(n_order + 1):
+                if i != j:
+                    k = torch.ones_like(x) / (nodes[j] - nodes[i])
+                    for m in range(n_order + 1):
+                        if m != i and m != j:
+                            k *= (x - nodes[m]) / (nodes[j] - nodes[m])
+                    y += k
+            dp_list[:, :, j] = y
+
+        return dp_list
+
+    def ddlagrange(self, x, n_order):
+        """Lagrange polynomials."""
+        nodes = torch.linspace(-1.0, 1.0, n_order + 1)
+
+        ddp_list = torch.zeros(
+            (
+                x.shape[0],
+                x.shape[1],
+                n_order + 1,
+            )
+        )
+
+        for j in range(n_order + 1):
+            y = 0.0
+            for i in range(n_order + 1):
+                if i != j:
+                    k_sum = 0.0
+                    for m in range(n_order + 1):
+                        if m != i and m != j:
+                            k_prod = torch.ones_like(x) / (nodes[j] - nodes[m])
+                            for n in range(n_order + 1):
+                                if n != i and n != j and n != m:
+                                    k_prod *= (x - nodes[n]) / (nodes[j] - nodes[n])
+                            k_sum += k_prod
+                    y += (1 / (nodes[j] - nodes[i])) * k_sum
+            ddp_list[:, :, j] = y
+
+        return ddp_list
+
+    def to_ref(self, x, node_l, node_r):
+        """Transform to reference base."""
+        return (x - (0.5 * (node_l + node_r))) / (0.5 * (node_r - node_l))
+
+    def to_shift(self, x):
+        """Shift from real line to natural line."""
+        x_shift = (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
+        return x_shift
+
+    def forward(self, x, _, sample):
+        if _ == 0:
+            """Forward pass for whole batch."""
+            if len(x.shape) != 2:
+                x = x.unsqueeze(-1)
+                x = torch.repeat_interleave(x, self.n_width, -1)
+            x_shift = self.to_shift(x)
+
+            id_element_in = torch.floor(x_shift / self.n_order)
+            # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
+            id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
+            id_element_in[id_element_in < 0] = 0
+
+            # what is the meaning of the following lines?
+            nodes_in_l = (id_element_in * self.n_order).to(int)
+            nodes_in_r = (nodes_in_l + self.n_order).to(int)
+
+            x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
+            self.delta_x_inner = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
+
+            delta_x_1st = self.delta_x_inner
+            delta_x_2nd = self.delta_x_inner**2
+
+            phi_local_ikp = self.lagrange(x_transformed, self.n_order)
+            dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
+            ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+
+            for layer in range(self.n_width):
+                for node in range(self.n_order + 1):
+                    self.phi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
+                        phi_local_ikp[0, layer, node]
+                    )
+                    self.dphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
+                        dphi_local_ikp[0, layer, node] / delta_x_1st
+                    )
+                    self.ddphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
+                        ddphi_local_ikp[0, layer, node] / delta_x_2nd
+                    )
+         
+        with torch.no_grad():
+            phi_cut = self.phi_ikp_inner[sample:(sample+1), :, :]
+            dphi_cut = self.dphi_ikp_inner[sample:(sample+1), :, :]
+            ddphi_cut = self.ddphi_ikp_inner[sample:(sample+1), :, :]
+
+        t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_cut)
+        dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_cut)
+        ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_cut)
+
+        return {
+            "t_ik": t_ik,
+            "dt_ik": dt_ik,
+            "ddt_ik": ddt_ik,
+            "phi_ikp": self.phi_ikp_inner,
+            "dphi_ikp": self.dphi_ikp_inner,
+            "ddphi_ikp": self.ddphi_ikp_inner,
+            "delta_x": self.delta_x_inner,
+        }
+        
+class LagrangeKANNouter(torch.nn.Module):
+    """A KANN layer using n-th order Lagrange polynomials."""
+
+    def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
+        """Initialize."""
+        super(LagrangeKANNouter, self).__init__()
+        self.n_width = n_width
+        self.n_order = n_order
+        self.n_elements = n_elements
+        self.n_nodes = n_elements * n_order + 1
+        self.n_samples = n_samples
+        self.x_min = x_min
+        self.x_max = x_max
+
+        self.weight = torch.nn.parameter.Parameter(
+            torch.zeros((self.n_width, self.n_nodes))
+        )
+        
+    def lagrange(self, x, n_order):
+        """Lagrange polynomials."""
+        nodes = torch.linspace(-1.0, 1.0, n_order + 1)
+
+        p_list = torch.zeros(
+            (
+                x.shape[0],
+                x.shape[1],
+                n_order + 1,
+            )
+        )
+
+        for j in range(n_order + 1):
+            p = 1.0
+            for m in range(n_order + 1):
+                if j != m:
+                    p *= (x - nodes[m]) / (nodes[j] - nodes[m])
+            p_list[:, :, j] = p
+
+        return p_list
+
+    def dlagrange(self, x, n_order):
+        """Lagrange polynomials."""
+        nodes = torch.linspace(-1.0, 1.0, n_order + 1)
+
+        dp_list = torch.zeros(
+            (
+                x.shape[0],
+                x.shape[1],
+                n_order + 1,
+            )
+        )
+
+        for j in range(n_order + 1):
+            y = 0.0
+            for i in range(n_order + 1):
+                if i != j:
+                    k = torch.ones_like(x) / (nodes[j] - nodes[i])
+                    for m in range(n_order + 1):
+                        if m != i and m != j:
+                            k *= (x - nodes[m]) / (nodes[j] - nodes[m])
+                    y += k
+            dp_list[:, :, j] = y
+
+        return dp_list
+
+    def ddlagrange(self, x, n_order):
+        """Lagrange polynomials."""
+        nodes = torch.linspace(-1.0, 1.0, n_order + 1)
+
+        ddp_list = torch.zeros(
+            (
+                x.shape[0],
+                x.shape[1],
+                n_order + 1,
+            )
+        )
+
+        for j in range(n_order + 1):
+            y = 0.0
+            for i in range(n_order + 1):
+                if i != j:
+                    k_sum = 0.0
+                    for m in range(n_order + 1):
+                        if m != i and m != j:
+                            k_prod = torch.ones_like(x) / (nodes[j] - nodes[m])
+                            for n in range(n_order + 1):
+                                if n != i and n != j and n != m:
+                                    k_prod *= (x - nodes[n]) / (nodes[j] - nodes[n])
+                            k_sum += k_prod
+                    y += (1 / (nodes[j] - nodes[i])) * k_sum
+            ddp_list[:, :, j] = y
+
+        return ddp_list
+
+    def to_ref(self, x, node_l, node_r):
+        """Transform to reference base."""
+        return (x - (0.5 * (node_l + node_r))) / (0.5 * (node_r - node_l))
+
+    # unsure for the meaning of the following function (do we shift from -1 to 1 range to 0 to 49 range?)
+    def to_shift(self, x):
+        """Shift from real line to natural line."""
+        x_shift = (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
+        return x_shift
+
+    def forward(self, x):
+        """Forward pass for whole batch."""
+        if len(x.shape) != 2:
+            x = x.unsqueeze(-1)
+            x = torch.repeat_interleave(x, self.n_width, -1)
+        x_shift = self.to_shift(x)
+
+        id_element_in = torch.floor(x_shift / self.n_order)
+        # ensures that all elements of vector id_element_in are within the range of 0 and n_elements - 1
+        id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
+        id_element_in[id_element_in < 0] = 0
+
+        # what is the meaning of the following lines?
+        nodes_in_l = (id_element_in * self.n_order).to(int)
+        nodes_in_r = (nodes_in_l + self.n_order).to(int)
+
+        x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
+        delta_x = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
+
+        delta_x_1st = delta_x
+        delta_x_2nd = delta_x**2
+
+        phi_local_ikp = self.lagrange(x_transformed, self.n_order)
+        dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
+        ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+
+        phi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+
+        for sample in range(self.n_samples):
+            for layer in range(self.n_width):
+                for node in range(self.n_order + 1):
+                    phi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                        phi_local_ikp[sample, layer, node]
+                    )
+                    dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                        dphi_local_ikp[sample, layer, node] / delta_x_1st
+                    )
+                    ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                        ddphi_local_ikp[sample, layer, node] / delta_x_2nd
+                    )
+
+        t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_ikp)
+        dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
+        ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
+
+        return {
+            "t_ik": t_ik,
+            "dt_ik": dt_ik,
+            "ddt_ik": ddt_ik,
+            "phi_ikp": phi_ikp,
+            "dphi_ikp": dphi_ikp,
+            "ddphi_ikp": ddphi_ikp,
+            "delta_x": delta_x,
+        }
 class LagrangeKANN(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
@@ -209,8 +531,12 @@ class KANN(torch.nn.Module):
         self.autodiff = autodiff
         self.speedup = speedup
 
-        self.inner = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
-        self.outer = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
+        if speedup:
+            self.inner = LagrangeKANNinner(n_width, n_order, n_elements, n_samples, x_min, x_max)
+            self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
+        else:
+            self.inner = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
+            self.outer = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
         
         total_params = sum(p.numel() for p in self.parameters())
         nodes_per_width = n_elements * n_order + 1
@@ -222,114 +548,51 @@ class KANN(torch.nn.Module):
         print(f"Autodiff: {autodiff}\n")
         return None
 
-    def forward(self, x):
+    def forward(self, x, epoch, sample):
         """Forward pass for whole batch."""
-        x = self.inner(x)["t_ik"]
-        x = self.outer(x)["t_ik"]
-
-        x = torch.einsum("ik -> i", x)
+        if self.speedup is True:
+            x = self.inner(x,epoch,sample)["t_ik"]
+            x = self.outer(x)["t_ik"]
+            x = torch.einsum("ik -> i", x)
+        else:
+            x = self.inner(x)["t_ik"]
+            x = self.outer(x)["t_ik"]
+            x = torch.einsum("ik -> i", x)
 
         return x
 
-    def residual(self, x, epoch,sample):
-        """Calculate residual."""
-
-        y = 1 + x * self.forward(x,epoch,sample)
-
-        inner_dict = self.inner(x)
+    def linear_system(self, x, epoch,sample,h):
+        """Calculate linear system."""
+        inner_dict = self.inner(x,epoch,sample)
         outer_dict = self.outer(inner_dict["t_ik"])
 
         inner_dt_ik = inner_dict["dt_ik"]
+        inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
+        inner_dphi_ikp = self.inner.dphi_ikp_inner[sample:(sample+1), :, :]
 
         outer_t_ik = outer_dict["t_ik"]
         outer_dt_ik = outer_dict["dt_ik"]
+        outer_ddt_ik = outer_dict["ddt_ik"]
+        outer_phi_ikl = outer_dict["phi_ikp"]
+        outer_dphi_ikl = outer_dict["dphi_ikp"]
 
-        dy = torch.einsum(
-            "i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik
-        ) + torch.einsum("ik -> i", outer_t_ik)
+        A_outer = (
+            torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
+            + torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
+            + torch.einsum("ikl -> ikl", outer_phi_ikl)
+        )
 
-        residual = dy - y
-        return residual
-
-    def linear_system(self, x, y_true,_,sample):
-        """Compute Ax=b."""
-        if self.speedup:
-            inner_dict = self.inner(x,_,sample)
-            outer_dict = self.outer(inner_dict["t_ik"])
-
-            inner_dt_ik = inner_dict["dt_ik"]
-            #inner_phi_ikp = inner_dict["phi_ikp"]
-            inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
-            #inner_dphi_ikp = inner_dict["dphi_ikp"]
-            inner_dphi_ikp = self.inner.dphi_ikp_inner[sample:(sample+1), :, :]
-
-            outer_t_ik = outer_dict["t_ik"]
-            outer_dt_ik = outer_dict["dt_ik"]
-            outer_ddt_ik = outer_dict["ddt_ik"]
-            outer_phi_ikl = outer_dict["phi_ikp"]
-            outer_dphi_ikl = outer_dict["dphi_ikp"]
-
-            A_outer = (
-                torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
-                - torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
-                + torch.einsum("ikl -> ikl", outer_phi_ikl)
-            )
-
-            A_inner = (
-                torch.einsum(
-                    "i, ik, ik, ikp -> kp",
-                    x,
-                    outer_ddt_ik,
-                    inner_dt_ik,
-                    inner_phi_ikp,
-                )
-                + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
-                + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-                - torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
-            )
-            
-            y1 = torch.einsum("ik -> i", outer_t_ik)
-            y = 1 + x * y1
-
-            dy = torch.einsum(
-                "i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik
-            ) + torch.einsum("ik -> i", outer_t_ik)
-
-            b = dy - y
-            
-        else:
-            b = self.residual(x, y_true,_,sample)
-            inner_dict = self.inner(x)
-            outer_dict = self.outer(inner_dict["t_ik"])
-
-            inner_dt_ik = inner_dict["dt_ik"]
-            inner_phi_ikp = inner_dict["phi_ikp"]
-            inner_dphi_ikp = inner_dict["dphi_ikp"]
-
-            outer_dt_ik = outer_dict["dt_ik"]
-            outer_ddt_ik = outer_dict["ddt_ik"]
-            outer_phi_ikl = outer_dict["phi_ikp"]
-            outer_dphi_ikl = outer_dict["dphi_ikp"]
-
-            A_outer = (
-                torch.einsum("i, ikl, ik -> ikl", x, outer_dphi_ikl, inner_dt_ik)
-                - torch.einsum("i, ikl -> ikl", x, outer_phi_ikl)
-                + torch.einsum("ikl -> ikl", outer_phi_ikl)
-            )
-
-            A_inner = (
-                torch.einsum(
-                    "i, ik, ik, ikp -> kp",
-                    x,
-                    outer_ddt_ik,
-                    inner_dt_ik,
-                    inner_phi_ikp,
-                )
-                + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
-                + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-                - torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
-            )
-
+        A_inner = (
+            torch.einsum("i, ik, ik, ikp -> kp",x,outer_ddt_ik,inner_dt_ik,inner_phi_ikp,)
+            + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
+            + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
+            + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
+        )
+        
+        y1 = torch.einsum("ik -> i", outer_t_ik)
+        y = 1 + x * y1
+        dy = torch.einsum("i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik) + y1
+        b = dy + y - h
         return {"A_inner": A_inner, "A_outer": A_outer, "b": b}
 def ode_hde(y0,x):
     
@@ -493,7 +756,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_abs_{timestamp}.png")
     plt.show()
     return None
 def collocationpoints(total_values):
@@ -507,7 +770,7 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 1):
+def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 10):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -520,7 +783,7 @@ def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interv
     ax.legend()
     ax.grid(True)
     i = 0
-    interval = 1
+    #interval = 1
     def animate(i):
         line.set_ydata(solutions[:,i])  # update the data
         epoch = i*interval
@@ -532,11 +795,6 @@ def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interv
         ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
     plt.show()
     return None
-
-
-
-
-
 
 def main():
     """Execute main routine."""
@@ -571,13 +829,6 @@ def main():
         y0 = 1
         k = 1000
         logpoints = False
-        # vector of n_samples from x_min to x_max
-        #x_i = collocationpoints(n_samples).requires_grad_(True)
-        #x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_(True)
-        #x_i = torch.linspace(x_min, x_max, n_samples)
-        #x_i_real = x_i.detach()
-        # create sample Data
-        #y_i = ode_hde(y0,x_i)
         
         if logpoints:
             col_points_log = collocationpoints(n_samples)
@@ -604,7 +855,7 @@ def main():
         y_i = f_x_exact
         # create heaviside function for ODE HBC
         with torch.no_grad():
-            jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
+            jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
             heaviside_tensor = heaviside_fct(x_i)
             #heavyside_tensor = heaviside_fct(col_points)
             if False:
@@ -619,7 +870,7 @@ def main():
         loss_mean = 0
         loss = 0
         residual = 0 
-        n_elements = int((n_samples - 2) / n_order)
+        n_elements = int((n_samples - 1) / n_order)
         # initialize the model
         model = KANN(
             n_width=n_width,
@@ -643,13 +894,17 @@ def main():
                     h = heaviside_tensor[sample].unsqueeze(-1)
                     j = jump[sample].unsqueeze(-1)
                     if autodiff is True:
-                        y = 1 + x * model(x)
+                        y = 1 + x * model(x,_,sample)
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx - h+y)
-                    else:# manual differentiation
-                        print("Manual differentiation not implemented")
+                        residual = (dydx + y - h)
+                    else:
+                        with torch.no_grad():
+                            system = model.linear_system(x,_,sample,h)
+                            A_inner = system["A_inner"]
+                            A_outer = system["A_outer"]
+                            residual = system["b"]
 
                     loss = torch.mean(torch.square(residual))
                     #loss = residual
@@ -661,7 +916,12 @@ def main():
                         )
                         norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
                     else:
-                        print("Manual differentiation not implemented")
+                        g_lst = [A_inner, A_outer]
+
+                        norm = (
+                            torch.linalg.norm(A_inner) ** 2
+                            + torch.linalg.norm(A_outer) ** 2
+                        )
                         
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
@@ -677,13 +937,13 @@ def main():
                 #if loss_mean.item() < 1e-3:
                 #    break
                 Tickrate = pbar1.format_dict['rate']
-                if _ % 1 == 0:
+                if _ % 10 == 0:
                     with torch.no_grad():
                         sampleeval = 0
                         vec = torch.zeros(n_samples)
                         for sampleeval in range(n_samples):
                             x = x_i[sampleeval].unsqueeze(-1)
-                            vec[sampleeval] = 1+x*model(x)
+                            vec[sampleeval] = 1+x*model(x,_,sampleeval)
                         vec = vec.detach().numpy().reshape(-1,1)
                         if _ == 0:
                             solutions = vec
@@ -701,16 +961,16 @@ def main():
             for sample in range(n_samples):
                 x = x_i[sample].unsqueeze(-1)
                 #y_hat[sample] = model(x)
-                y_hat[sample] = 1 + x * model(x)
+                y_hat[sample] = 1 + x * model(x,_,sample)
         y_hat = y_hat.view(-1,1).numpy()
         l2 = np.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
         solutions = np.hstack([solutions, y_hat])
         
-        create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 1)
+        create_animation(save,model,solutions, x_i, y_i,timestamp)
         plot_solution(save,x_i,y_hat, y_i, l2,timestamp)
         plt.close('all')
-        print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
+        print(timestamp, f"{loss_mean.item():.4e}",f"{l2.item():.4e}")
         values[run, 0] = n_width
         values[run, 1] = n_order
         values[run, 2] = n_samples

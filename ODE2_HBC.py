@@ -227,7 +227,7 @@ def collocationpoints(total_values):
     combined = combined.detach().numpy()
     return combined
 def main():
-    learning = True
+    learning = False
     save = True
     show = True
     # define neural network to train
@@ -272,6 +272,11 @@ def main():
     with torch.no_grad():
         heavyside = heaviside(col_points)
         jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
+        plt.figure(figsize=(10, 5))
+        plt.plot(col_points, jump, label="Jump function", color="blue", alpha=1.0, linewidth=2)
+        plt.plot(col_points, heavyside, label="Heaviside function", color="red", alpha=1.0, linewidth=2)
+        plt.grid()
+        plt.show()
     
     solutions = []
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)

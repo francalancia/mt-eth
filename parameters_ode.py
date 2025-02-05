@@ -1,10 +1,10 @@
 n_width = 2
 n_order = 1
-n_samples = 1111
-n_epochs = 400
+n_samples = 401
+n_epochs = 10000
 tol = 1e-26
-autodiff = True
-speedup = False
+autodiff = False
+speedup = True
 prestop = False
 save = False
 track_values = False
