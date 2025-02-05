@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import tqdm
 from scipy.integrate import odeint
 from matplotlib.animation import FuncAnimation
+from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 import datetime
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 torch.manual_seed(123)
@@ -37,25 +38,27 @@ def f(x):
     else:
         return 1 + (np.exp(-1) - 1) * np.exp(-10 * (x - 0.1))
 
-def plot_solution(pinn, col_points, f_x_exact, i):
+def plot_solution(save,show,pinn, col_points, f_x_exact, i):
     with torch.no_grad():
         f_x = pinn(col_points).detach()
     col_points = col_points.detach()
     f_x_exact = torch.from_numpy(f_x_exact).view(-1,1)
-    plt.figure(1,figsize=(10, 5))
     error_abs = np.abs(f_x_exact - f_x)
-
-    """
-    plt.scatter(
-        col_points.detach()[:, 0],
-        torch.zeros_like(col_points)[:, 0],
-        s=20,
-        lw=0,
-        color="tab:green",
-        alpha=1.0,
-    )
-    """
-    plt.plot(
+    ####################################################################################################################
+    # Plotting the analytical and PINN solution
+    ####################################################################################################################
+    
+    plt.figure(1,figsize=(10, 5))
+    ax = plt.gca()
+    plt.rcParams.update({
+        'font.size': 14,              # Base font size
+        'axes.labelsize': 12,         # Axis labels
+        'xtick.labelsize': 12,        # X-axis tick labels
+        'ytick.labelsize': 12,        # Y-axis tick labels
+        'legend.fontsize': 12,        # Legend
+        'figure.titlesize': 12        # Figure title
+    })
+    ax.plot(
         col_points[:, 0],
         f_x_exact[:, 0],
         label="Analytical solution",
@@ -63,57 +66,112 @@ def plot_solution(pinn, col_points, f_x_exact, i):
         alpha=1.0,
         linewidth=2,
     )
-    plt.plot(
+    ax.plot(
         col_points[:, 0],
         f_x[:, 0], 
         linestyle = "--" ,
         label="PINN solution",
         color="tab:green",
         linewidth=2)
-    plt.axvline(x=1.0, color='gray', linestyle='--')
+    ax.axvline(x=1.0, color='gray', linestyle='--', label='Jump at x = 1.0')
     l2 = torch.linalg.norm(f_x_exact - f_x)
-    plt.title(f"L2 error: {l2:.4e}")
-    plt.xlabel("x")
-    plt.ylabel("f(x)")
-    plt.legend()
-    plt.grid()
-    #plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_{timestamp}.png")
-    plt.figure(2,figsize=(10,5))
-    plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
-    plt.title("Absolute error between Analytical and PINN")
-    plt.xlabel("x")
-    plt.xlim(0.15, 1.0)
-    plt.ylabel("Absolute error")
-    plt.grid()
-    #plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
-    plt.show()
-    
-    
-    return l2
-def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 10):
-    col_exact = col_exact.detach()
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
-    ax.axvline(x=0.1, color='r', linestyle='--', label='x = 0.1')
-    line, = ax.plot(col_exact.numpy(), solutions[0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
-    solutions = np.array(solutions).squeeze()
-    f_x_exact = f_x_exact.transpose()
-    #ax.set_xlim(0, 1)
-    #ax.set_ylim(0, 1)
+    ax.set_title(f"L2 error: {l2:.4e}")
+    ax.set_xticks(np.arange(0, 11, 1))
+    ax.set_ylim(0.35, 1.05)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
-    #ax.legend(loc="upper left")
+    ax.legend()
+    ax.grid(True)
+    
+    axins = ax.inset_axes([0.68, 0.35, 0.3, 0.5])
+    axins.plot(col_points[:, 0], f_x_exact[:, 0], color="black", linewidth=2)
+    axins.plot(col_points[:, 0], f_x[:, 0], color="tab:green", linestyle="--", linewidth=2)
+    axins.axvline(x=1.0, color='gray', linestyle='--')
+    axins.set_xlim(0.9, 1.1)
+    axins.set_ylim(0.3625, 0.3875)
+    axins.set_xticks([0.9, 1.0, 1.1])
+    axins.set_yticks([0.3625, 0.375, 0.3875])
+    #axins.set_xticklabels([])
+    #axins.set_yticklabels([])
+
+    axins.grid(True)
+    mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
+    if save:
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_{timestamp}.png")
+    if show:
+        plt.show()
+    plt.close()
+    
+    ####################################################################################################################
+    # Plotting the absolute error between the analytical and PINN solution
+    ####################################################################################################################
+    fig = plt.figure(figsize=(16, 8))
+    gs = fig.add_gridspec(2, 3)
+    ax_top = fig.add_subplot(gs[0, :])
+    ax_bl = fig.add_subplot(gs[1, 0])
+    ax_bm = fig.add_subplot(gs[1, 1])
+    ax_br = fig.add_subplot(gs[1, 2])
+    ax_top.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_top.axvline(x=1.0, color='black', linestyle='--', label= "Jump location")
+    ax_top.legend()
+    ax_top.set_title("Absolute error between Analytical and PINN")
+    ax_top.set_xlabel("x")
+    ax_top.set_xticks(np.arange(0, 10, 1))
+    ax_top.set_xlim(0, 10)
+    ax_top.set_ylabel("Absolute error")
+    ax_top.grid()
+    
+    ax_bl.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_bl.set_xlabel("x")
+    ax_bl.set_xlim(0, 0.95)
+    ax_bl.set_ylabel("Absolute error")
+    ax_bl.grid()
+    
+    ax_bm.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_bm.set_xlabel("x")
+    ax_bm.set_xlim(0.85, 1.15)
+    #ax_bm.set_ylabel("Absolute error")
+    ax_bm.grid()
+    
+    ax_br.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_br.set_xlabel("x")
+    ax_br.set_xlim(1.05, 10)
+    #ax_br.set_ylabel("Absolute error")
+    ax_br.grid()
+    plt.subplots_adjust(hspace=0.2)
+    if save:
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
+    if show:
+        plt.show()
+    return l2
+def create_animation(save,show,solutions, col_exact, f_x_exact, interval = 10):
+    col_exact = col_exact.detach().numpy()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(col_exact, f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
+    line, = ax.plot(col_exact, solutions[0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    ax.axvline(x=1.0, color='gray', linestyle='--', label='Jump at x = 1.0')
+    solutions = np.array(solutions).squeeze()
+    f_x_exact = f_x_exact.transpose()
+    ax.set_xticks(np.arange(0, 11, 1))
+    ax.set_ylim(0.35, 1.05)
+    ax.set_xlabel("x")
+    ax.set_ylabel("f(x)")
+    ax.legend()
     ax.grid(True)
     i = 0
     def animate(i):
-        line.set_ydata(solutions[i])  # update the data
+        line.set_ydata(solutions[i])
         epoch = i*interval
         ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
         return line, ax,
 
-    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
-    #ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
-    #plt.show()
+    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=100, blit=False, repeat = False)
+    if save: 
+        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/PINN_animation_{timestamp}.mp4', writer='ffmpeg', fps=10, dpi = 300)
+    if show:
+        plt.show()
+    
+    
     return None
 
 class FCN(nn.Module):
@@ -170,17 +228,19 @@ def collocationpoints(total_values):
     return combined
 def main():
     learning = True
+    save = True
+    show = True
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 64
-    n_layers = 4
-    n_epochs = 400
+    n_hidden = 32
+    n_layers = 2
+    n_epochs = 1500
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
     tot_val_log = 701
-    tot_val = 3001
+    tot_val = 501
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 10, tot_val)
@@ -211,7 +271,7 @@ def main():
     col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
     with torch.no_grad():
         heavyside = heaviside(col_points)
-        jump = 1/(1 + torch.exp(-k*(col_points - 0.1)))
+        jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
     
     solutions = []
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
@@ -219,11 +279,11 @@ def main():
     
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
-    lr=1e-2,            # smaller than the default 1.0
-    max_iter=50,        # or up to 50 if you can afford it
-    history_size=100,    # if memory is limited, else 50-100 is okay
-    tolerance_grad=1e-7,
-    tolerance_change=1e-9,
+    lr=0.1,            
+    max_iter=400, #prev 1000        
+    history_size=150,    
+    tolerance_grad=1e-14,
+    tolerance_change=1e-16,
     line_search_fn='strong_wolfe'
     )
     
@@ -238,7 +298,7 @@ def main():
                 f_x, col_points, torch.ones_like(f_x), create_graph=True
             )[0]
             # compute the loss mean squared error
-            loss = torch.mean((df_xdx -(heavyside - f_x)) ** 2)
+            loss = torch.mean((df_xdx -(jump - f_x)) ** 2)
             # backpropagate the loss
             loss.backward()
             # return the loss for the optimiser
@@ -262,11 +322,12 @@ def main():
                 optimiser.step()
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
+                """
                 if _ % 10 == 0:
                     with torch.no_grad():
                         f_x = pinn(col_points)
                         solutions.append(f_x.detach().numpy())
-                """
+                
                 #optimiser.step()
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
     pinn.eval()
@@ -275,9 +336,9 @@ def main():
         solutions.append(f_x.detach().numpy())
 
     
-    #create_animation(pinn, solutions, col_points, f_x_exact)
+    create_animation(save, show,solutions, col_points, f_x_exact)
 
-    l2 = plot_solution(pinn, col_points, f_x_exact, n_epochs)
+    l2 = plot_solution(save,show,pinn, col_points, f_x_exact, n_epochs)
     print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
     if False:
         x_values = np.linspace(0, 1, 4001)
@@ -291,6 +352,14 @@ def main():
         plt.legend()
         plt.savefig('ODE2_HBCanalytical.png')
         plt.show()
+    if save:
+        with open(f"E:/ETH/Master/25HS_MA/Data_ODE2/hyperparam_{timestamp}.txt","w") as file:
+            file.write(f"Hidden neurons: {n_hidden}")
+            file.write(f"Hidden layers: {n_layers}")
+            file.write(f"Collocation points: {tot_val}")
+            file.write(f"Training loss: {loss.item():.4e}")
+            file.write(f"L2 error: {l2}")
+        
     return None
 
 

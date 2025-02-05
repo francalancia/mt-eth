@@ -19,7 +19,7 @@ def exact_solution(x):
     return y
 
 
-def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
+def plot_solution(pinn, col_points, col_exact, f_x_exact, i,save,show):
     f_x_exact = f_x_exact.detach().numpy()
     with torch.no_grad():
         f_x = pinn(col_exact).detach().numpy()
@@ -43,18 +43,24 @@ def plot_solution(pinn, col_points, col_exact, f_x_exact, i):
     plt.ylim(0,3)
     plt.legend(loc = "upper left")
     plt.grid()
-    plt.savefig(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1.png', dpi = 600)
+    if save:
+        plt.savefig(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1.png', dpi = 600)
+    if show:
+        plt.show()
+    plt.close()
     plt.figure(2,figsize=(10,5))
     plt.plot(col_points[:,0], error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     plt.title("Absolute error between Analytical and PINN")
     plt.xlabel("x")
     plt.ylabel("Absolute error")
     plt.grid()
-    plt.savefig(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1_abs.png', dpi = 600)
-    plt.show()
+    if save:
+        plt.savefig(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1_abs.png', dpi = 600)
+    if show:
+        plt.show()
 
     return None
-def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 1):
+def create_animation(save,show,solutions, col_exact, f_x_exact, interval = 10):
     col_exact = col_exact.detach()
     f_x_exact = f_x_exact.detach().numpy()
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -75,9 +81,11 @@ def create_animation(pinn,solutions, col_exact, f_x_exact, interval = 1):
         ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[i]):.4e}")
         return line, ax,
 
-    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=10, blit=False, repeat = False)  # Change the interval here
-    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1_animation.mp4', writer='ffmpeg', fps=100, dpi = 300)  # Specify fps and writer
-    plt.show()
+    ani = FuncAnimation(fig, animate, frames=len(solutions), interval=100, blit=False, repeat = False)  # Change the interval here
+    if save:
+        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE1/ODE1_animation.mp4', writer='ffmpeg', fps=10, dpi = 300)  # Specify fps and writer
+    if show:
+        plt.show()
     return None
 
 class FCN(nn.Module):
@@ -114,12 +122,14 @@ class FCN(nn.Module):
         return 1 + (coord * (x))
 
 def main():
+    save = True
+    show = False
     # define neural network to train
     n_input = 1
     n_output = 1
     n_hidden = 24
     n_layers = 2
-    n_epochs = 100
+    n_epochs = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
@@ -133,11 +143,11 @@ def main():
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
-    lr=1e-01,            # smaller than the default 1.0
-    max_iter=30,        # or up to 50 if you can afford it
-    history_size=120,    # if memory is limited, else 50-100 is okay
-    tolerance_grad=1e-7,
-    tolerance_change=1e-9,
+    lr=1e-01,            
+    max_iter=1000,        
+    history_size=150,    
+    tolerance_grad=1e-14,
+    tolerance_change=1e-16,
     line_search_fn='strong_wolfe'
     )
     solutions = []
@@ -177,7 +187,7 @@ def main():
             #optimiser.step()
             
             pbar.set_postfix(loss=f"{loss.item():.4e}")
-            if _ % 1 == 0:
+            if _ % 10 == 0:
                 with torch.no_grad():
                     f_x = pinn(col_points)
                     solutions.append(f_x.detach().numpy())
@@ -186,8 +196,12 @@ def main():
         f_x = pinn(col_points)
         solutions.append(f_x.detach().numpy())
 
-    create_animation(pinn, solutions, col_points, f_x_exact)
-    plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs)
+    create_animation(save,show, solutions, col_points, f_x_exact)
+    plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs,save,show)
+    
+    
+    
+    
     return None
 
 

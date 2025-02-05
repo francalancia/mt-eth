@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 from scipy.integrate import odeint
 from matplotlib.animation import FuncAnimation
+from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 import datetime
 
 # set the default data type for tensors to double precision
@@ -333,18 +334,18 @@ class KANN(torch.nn.Module):
 def ode_hde(y0,x):
     
     def heaviside(x):
-        return 1 if x >= 0.1 else 0
+        return 1 if x >= 1.0 else 0
     
     def system_heaviside(y,x):
         H = heaviside(x)
-        dydx = 10*(H - y)
+        dydx = H - y
         return dydx
     
     y_heaviside = odeint(system_heaviside, y0, x)
     
     return y_heaviside
 def heaviside_fct(x):
-    tensor = torch.where(x >= 0.1, torch.ones_like(x), torch.zeros_like(x))
+    tensor = torch.where(x >= 1.0, torch.ones_like(x), torch.zeros_like(x))
     return tensor
 
 def save_excel(values, autodiff, regression, speedup, prestop):
@@ -400,11 +401,22 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     return None
 def plot_solution(save,x_i, y_hat, y_i, l2, timestamp): 
     x_i = x_i.detach().view(-1,1).numpy()
-    # Plotting
     error_abs = np.abs(y_i - y_hat)
+    ####################################################################################################################
+    # Plotting the analytical and PINN solution
+    ####################################################################################################################
+    
     plt.figure(2,figsize=(10,5))
-    plt.ylim(0.3, 1.1)
-    plt.plot(
+    ax = plt.gca()
+    plt.rcParams.update({
+        'font.size': 14,              # Base font size
+        'axes.labelsize': 12,         # Axis labels
+        'xtick.labelsize': 12,        # X-axis tick labels
+        'ytick.labelsize': 12,        # Y-axis tick labels
+        'legend.fontsize': 12,        # Legend
+        'figure.titlesize': 12        # Figure title
+    })
+    ax.plot(
         x_i,
         y_i,
         label="Analytical solution",
@@ -412,7 +424,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
         alpha=1.0,
         linewidth=2,
     )
-    plt.plot(
+    ax.plot(
         x_i,
         y_hat,
         linestyle="--",
@@ -420,31 +432,69 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
         color="tab:green",
         linewidth=2
     )
-    plt.axvline(x=0.1, color='gray', linestyle='--')
-    plt.title(f"L2-error: {l2:0.4e}")
-    plt.xlabel("x")
-    plt.ylabel("f(x)")
-    plt.legend()
-    plt.grid()
+    ax.axvline(x=1.0, color='gray', linestyle='--', label = "Jump at x = 1.0")
+    ax.set_title(f"L2-error: {l2:0.4e}")
+    ax.set_xticks(np.arange(0, 11, 1))
+    ax.set_ylim(0.35, 1.05)
+    ax.set_xlabel("x")
+    ax.set_ylabel("f(x)")
+    ax.legend()
+    ax.grid(True)
+    axins = ax.inset_axes([0.68, 0.35, 0.3, 0.5])
+    axins.plot(x_i, y_i, color="black", linewidth=2)
+    axins.plot(x_i, y_hat, color="tab:green", linestyle="--", linewidth=2)
+    axins.axvline(x=1.0, color='gray', linestyle='--')
+    axins.set_xlim(0.9, 1.1)
+    axins.set_ylim(0.3625, 0.3875)
+    axins.set_xticks([0.9, 1.0, 1.1])
+    axins.set_yticks([0.3625, 0.375, 0.3875])
+    #axins.set_xticklabels([])
+    #axins.set_yticklabels([])
+
+    axins.grid(True)
+    mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
         plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANNODE_{timestamp}.png")
-    plt.figure(3,figsize=(10,5))
-    plt.plot(
-        x_i,
-        error_abs,
-        label="Absolute error",
-        color="red",
-        alpha=1.0,
-        linewidth=2,
-    )
-    plt.grid()
-    plt.xlabel("x")
-    plt.ylabel("Absolute error")
-    plt.title("Absolute error between Analytical and PINN")
-    if save: 
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANNODE_abs_{timestamp}.png")
+    ####################################################################################################################
+    # Plotting the absolute error between the analytical and PINN solution
+    ####################################################################################################################
+    fig = plt.figure(figsize=(16, 8))
+    gs = fig.add_gridspec(2, 3)
+    ax_top = fig.add_subplot(gs[0, :])
+    ax_bl = fig.add_subplot(gs[1, 0])
+    ax_bm = fig.add_subplot(gs[1, 1])
+    ax_br = fig.add_subplot(gs[1, 2])
+    ax_top.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_top.axvline(x=1.0, color='black', linestyle='--', label= "Jump location")
+    ax_top.legend()
+    ax_top.set_title("Absolute error between Analytical and PINN")
+    ax_top.set_xlabel("x")
+    ax_top.set_xticks(np.arange(0, 10, 1))
+    ax_top.set_xlim(0, 10)
+    ax_top.set_ylabel("Absolute error")
+    ax_top.grid()
+    
+    ax_bl.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_bl.set_xlabel("x")
+    ax_bl.set_xlim(0, 0.95)
+    ax_bl.set_ylabel("Absolute error")
+    ax_bl.grid()
+    
+    ax_bm.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_bm.set_xlabel("x")
+    ax_bm.set_xlim(0.85, 1.15)
+    #ax_bm.set_ylabel("Absolute error")
+    ax_bm.grid()
+    
+    ax_br.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
+    ax_br.set_xlabel("x")
+    ax_br.set_xlim(1.05, 10)
+    #ax_br.set_ylabel("Absolute error")
+    ax_br.grid()
+    plt.subplots_adjust(hspace=0.2)
+    if save:
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/ODE2_abs_{timestamp}.png")
     plt.show()
-
     return None
 def collocationpoints(total_values):
     nval1 = total_values // 5
@@ -461,13 +511,13 @@ def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interv
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
-    ax.axvline(x=0.1, color='r', linestyle='--', label='x = 0.1')
     line, = ax.plot(col_exact.numpy(), solutions[:,0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    ax.axvline(x=1.0, color='gray', linestyle='--', label='Jump at x = 1.0')
     #ax.set_xlim(0.4, 1)
     ax.set_ylim(0.3, 1.1)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
-    #ax.legend(loc="upper left")
+    ax.legend()
     ax.grid(True)
     i = 0
     interval = 1
@@ -478,8 +528,8 @@ def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interv
         return line, ax,
 
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
-    #if save: 
-    #    ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
+    if save: 
+        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
     plt.show()
     return None
 
@@ -517,7 +567,7 @@ def main():
         
         # define range and initial value for the ODE
         x_min = 0.0
-        x_max = 1.0
+        x_max = 10.0
         y0 = 1
         k = 1000
         logpoints = False
@@ -597,7 +647,7 @@ def main():
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx - 10*(h-y))
+                        residual = (dydx - h+y)
                     else:# manual differentiation
                         print("Manual differentiation not implemented")
 
