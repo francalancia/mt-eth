@@ -26,13 +26,14 @@ plt.rcParams.update({
 class LagrangeKANNinner(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
-    def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
+    def __init__(self, n_width, n_order, n_elements, n_collocation,n_samples, x_min, x_max):
         """Initialize."""
         super(LagrangeKANNinner, self).__init__()
         self.n_width = n_width
         self.n_order = n_order
         self.n_elements = n_elements
         self.n_nodes = n_elements * n_order + 1
+        self.n_collocation = n_collocation
         self.n_samples = n_samples
         self.x_min = x_min
         self.x_max = x_max
@@ -41,9 +42,9 @@ class LagrangeKANNinner(torch.nn.Module):
             torch.zeros((self.n_width, self.n_nodes))
         )
         
-        self.phi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
-        self.dphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
-        self.ddphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+        self.phi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
+        self.dphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
+        self.ddphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -513,6 +514,7 @@ class KANN(torch.nn.Module):
         n_width,
         n_order,
         n_elements,
+        n_collocation,
         n_samples,
         x_min,
         x_max,
@@ -525,6 +527,7 @@ class KANN(torch.nn.Module):
         self.n_order = n_order
         self.n_elements = n_elements
         self.n_nodes = n_elements * n_order + 1
+        self.n_collocation = n_collocation
         self.n_samples = n_samples
         self.x_min = x_min
         self.x_max = x_max
@@ -532,12 +535,12 @@ class KANN(torch.nn.Module):
         self.speedup = speedup
 
         if speedup:
-            self.inner = LagrangeKANNinner(n_width, n_order, n_elements, n_samples, x_min, x_max)
+            self.inner = LagrangeKANNinner(n_width, n_order, n_elements,n_collocation, n_samples, x_min, x_max)
             self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
         else:
             self.inner = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
             self.outer = LagrangeKANN(n_width, n_order, n_elements, n_samples, x_min, x_max)
-        
+            
         total_params = sum(p.numel() for p in self.parameters())
         nodes_per_width = n_elements * n_order + 1
         print(f"\nTotal parameters: {total_params}")
@@ -555,6 +558,9 @@ class KANN(torch.nn.Module):
             x = self.outer(x)["t_ik"]
             x = torch.einsum("ik -> i", x)
         else:
+            #coor = x
+            #k = 100
+            #jump = 1/(1 + torch.exp(-k*(coor - 1.0)))
             x = self.inner(x)["t_ik"]
             x = self.outer(x)["t_ik"]
             x = torch.einsum("ik -> i", x)
@@ -698,7 +704,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
     ax.axvline(x=1.0, color='gray', linestyle='--', label = "Jump at x = 1.0")
     ax.set_title(f"L2-error: {l2:0.4e}")
     ax.set_xticks(np.arange(0, 11, 1))
-    ax.set_ylim(0.35, 1.05)
+    #ax.set_ylim(0.35, 1.05)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
     ax.legend()
@@ -718,6 +724,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
         plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANNODE_{timestamp}.png")
+    plt.show()
     ####################################################################################################################
     # Plotting the absolute error between the analytical and PINN solution
     ####################################################################################################################
@@ -757,7 +764,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
     plt.subplots_adjust(hspace=0.2)
     if save:
         plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_abs_{timestamp}.png")
-    plt.show()
+    #plt.show()
     return None
 def collocationpoints(total_values):
     nval1 = total_values // 5
@@ -770,7 +777,7 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 10):
+def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 20):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -825,9 +832,8 @@ def main():
         
         # define range and initial value for the ODE
         x_min = 0.0
-        x_max = 10.0
+        x_max = 1.0
         y0 = 1
-        k = 1000
         logpoints = False
         
         if logpoints:
@@ -854,28 +860,32 @@ def main():
         x_i = col_points
         y_i = f_x_exact
         # create heaviside function for ODE HBC
-        with torch.no_grad():
-            jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
-            heaviside_tensor = heaviside_fct(x_i)
-            #heavyside_tensor = heaviside_fct(col_points)
-            if False:
-                plt.figure(figsize=(8, 4))
-                plt.plot(col_points, heaviside_tensor, label="Heaviside function", color="black", alpha=1.0, linewidth=2)
-                plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-                plt.grid()
-                plt.show()
+        heaviside_tensor = heaviside_fct(x_i)
+        if False:
+            with torch.no_grad():
+                k = 400
+                jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
+                heaviside_tensor = heaviside_fct(x_i)
+                #heavyside_tensor = heaviside_fct(col_points)
+                if False:
+                    plt.figure(figsize=(8, 4))
+                    plt.plot(col_points, jump, label="Heaviside function", color="black", alpha=1.0, linewidth=2)
+                    plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+                    plt.grid()
+                    plt.show()
             
         sample = 0
         _ = 0
         loss_mean = 0
         loss = 0
         residual = 0 
-        n_elements = int((n_samples - 1) / n_order)
+        n_elements = int((n_samples - 2) / n_order)
         # initialize the model
         model = KANN(
             n_width=n_width,
             n_order=n_order,
             n_elements=n_elements,
+            n_collocation = n_samples,
             n_samples=1,
             x_min=x_min,
             x_max=x_max,
@@ -883,6 +893,7 @@ def main():
             speedup=speedup
         )
         solutions = np.empty((n_samples,1))
+        k = 1000
         with tqdm.trange(n_epochs) as pbar1:
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
@@ -892,13 +903,13 @@ def main():
                     loss = 0  
                     x = x_i[sample].unsqueeze(-1)
                     h = heaviside_tensor[sample].unsqueeze(-1)
-                    j = jump[sample].unsqueeze(-1)
+                    j = jump = 1/(1 + torch.exp(-k*(x - 1.0)))
                     if autodiff is True:
-                        y = 1 + x * model(x,_,sample)
+                        y = 1 + x * (model(x,_,sample))
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx + y - h)
+                        residual = (dydx + y-j)
                     else:
                         with torch.no_grad():
                             system = model.linear_system(x,_,sample,h)
@@ -907,6 +918,7 @@ def main():
                             residual = system["b"]
 
                     loss = torch.mean(torch.square(residual))
+                    #loss2 = torch.norm(residual)
                     #loss = residual
                     
                     if autodiff is True:
@@ -937,7 +949,7 @@ def main():
                 #if loss_mean.item() < 1e-3:
                 #    break
                 Tickrate = pbar1.format_dict['rate']
-                if _ % 10 == 0:
+                if _ % 20 == 0:
                     with torch.no_grad():
                         sampleeval = 0
                         vec = torch.zeros(n_samples)

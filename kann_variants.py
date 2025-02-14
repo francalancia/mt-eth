@@ -69,7 +69,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2):
     plt.show()
 
     return None
-def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 1):
+def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 100):
     col_exact = col_exact.detach()
     f_x_exact = f_x_exact.detach().numpy()
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -451,13 +451,14 @@ class LagrangeKANNinnerODE(torch.nn.Module):
 class LagrangeKANNinner(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
-    def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
+    def __init__(self, n_width, n_order, n_elements,n_collocation, n_samples, x_min, x_max):
         """Initialize."""
         super(LagrangeKANNinner, self).__init__()
         self.n_width = n_width
         self.n_order = n_order
         self.n_elements = n_elements
         self.n_nodes = n_elements * n_order + 1
+        self.n_collocation = n_collocation
         self.n_samples = n_samples
         self.x_min = x_min
         self.x_max = x_max
@@ -465,10 +466,14 @@ class LagrangeKANNinner(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
-        
-        self.phi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
-        self.dphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
-        self.ddphi_ikp_inner = torch.zeros((self.n_nodes+n_order, self.n_width, self.n_nodes))
+        """The following 3 tensors are used to store the values of phi, dphi and ddphi for all collocation points
+        for the first layer. This is done to avoid recomputing them for following epochs, as their values remains
+        constant. The first dimension is for the number of "samples / collocation points", the second dimension is for
+        the width of our system and the last dimension is for the number of nodes in the system.
+        """
+        self.phi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
+        self.dphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
+        self.ddphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -710,7 +715,6 @@ class LagrangeKANNouter(torch.nn.Module):
         """Transform to reference base."""
         return (x - (0.5 * (node_l + node_r))) / (0.5 * (node_r - node_l))
 
-    # unsure for the meaning of the following function (do we shift from -1 to 1 range to 0 to 49 range?)
     def to_shift(self, x):
         """Shift from real line to natural line."""
         x_shift = (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
@@ -781,6 +785,7 @@ class KANN(torch.nn.Module):
         n_width,
         n_order,
         n_elements,
+        n_collocation,
         n_samples,
         x_min,
         x_max,
@@ -806,7 +811,7 @@ class KANN(torch.nn.Module):
                 self.inner = LagrangeKANNinnerODE(n_width, n_order, n_elements, n_samples, x_min, x_max)
                 self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
             else:
-                self.inner = LagrangeKANNinner(n_width, n_order, n_elements, n_samples, x_min, x_max)
+                self.inner = LagrangeKANNinner(n_width, n_order, n_elements,n_collocation, n_samples, x_min, x_max)
                 self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
  
         else:
@@ -901,9 +906,7 @@ class KANN(torch.nn.Module):
                 outer_dict = self.outer(inner_dict["t_ik"])
 
                 inner_dt_ik = inner_dict["dt_ik"]
-                #inner_phi_ikp = inner_dict["phi_ikp"]
                 inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
-                #inner_dphi_ikp = inner_dict["dphi_ikp"]
                 inner_dphi_ikp = self.inner.dphi_ikp_inner[sample:(sample+1), :, :]
 
                 outer_t_ik = outer_dict["t_ik"]
@@ -936,7 +939,7 @@ class KANN(torch.nn.Module):
 
                 dy = torch.einsum(
                     "i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik
-                ) + torch.einsum("ik -> i", outer_t_ik)
+                ) + y1
 
                 b = dy - y
                 
@@ -1081,6 +1084,7 @@ def main():
     prestop = parameters.prestop
     save = parameters.save
     
+    # why does number of elements change?
     n_elements = int((n_samples - 2) / n_order)
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
@@ -1109,7 +1113,7 @@ def main():
                 y_i[sample] = disc_osc(x_i[sample])
         else:
             y_i = torch.exp(x_i)
-
+        
         sample = 0
         _ = 0
         loss_mean = 0
@@ -1118,6 +1122,7 @@ def main():
             n_width=n_width,
             n_order=n_order,
             n_elements=n_elements,
+            n_collocation = n_samples,
             n_samples=1,
             x_min=x_min,
             x_max=x_max,
@@ -1182,7 +1187,7 @@ def main():
                     
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
-                        update = (residual / norm) * torch.squeeze(g)
+                        update = 1.2*(residual / norm) * torch.squeeze(g)
                         #update = 1e-3 * torch.squeeze(g)
                         p.data -= update
 
@@ -1210,11 +1215,11 @@ def main():
                     break
                 Tickrate = pbar1.format_dict['rate']
                 
-                if _ == 0 or _ % 10 == 0:
+                if _ == 0 or _ % 100 == 0:
                     loss_tracking[rval,0] = _
                     loss_tracking[rval,1] = loss_mean
                     rval += 1
-                if _ % 1 == 0:
+                if _ % 100 == 0:
                     vec = torch.zeros_like(x_i)
                     for sample in range(n_samples):
                         x = x_i[sample].unsqueeze(-1)
@@ -1259,7 +1264,7 @@ def main():
     y_hat2 = y_hat.detach().numpy().reshape(-1,1)
     solutions = np.hstack([solutions, y_hat2])
     l2 = l2.detach().numpy()
-    create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 1)
+    create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
     plot_solution(save,x_i, y_hat, y_i, l2)
     if False:
         save_excel(values, autodiff, regression, speedup, prestop)
