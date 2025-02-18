@@ -15,12 +15,12 @@ import datetime
 torch.set_default_dtype(torch.float64)
 # set the default plotting sizes
 plt.rcParams.update({
-        'font.size': 16,              # Base font size
-        'axes.labelsize': 14,         # Axis labels
-        'xtick.labelsize': 14,        # X-axis tick labels
-        'ytick.labelsize': 14,        # Y-axis tick labels
-        'legend.fontsize': 14,        # Legend
-        'figure.titlesize': 14        # Figure title
+        'font.size': 14,              # Base font size
+        'axes.labelsize': 12,         # Axis labels
+        'xtick.labelsize': 12,        # X-axis tick labels
+        'ytick.labelsize': 12,        # Y-axis tick labels
+        'legend.fontsize': 12,        # Legend
+        'figure.titlesize': 12        # Figure title
     })
 
 class LagrangeKANNinner(torch.nn.Module):
@@ -668,29 +668,22 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
-def plot_solution(save,x_i, y_hat, y_i, l2, timestamp): 
+def plot_solution(save,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs): 
     x_i = x_i.detach().view(-1,1).numpy()
+    zeros = np.zeros_like(x_i)
     error_abs = np.abs(y_i - y_hat)
     ####################################################################################################################
     # Plotting the analytical and PINN solution
     ####################################################################################################################
     
-    plt.figure(2,figsize=(10,5))
+    plt.figure(2,figsize=(12,6))
     ax = plt.gca()
-    plt.rcParams.update({
-        'font.size': 14,              # Base font size
-        'axes.labelsize': 12,         # Axis labels
-        'xtick.labelsize': 12,        # X-axis tick labels
-        'ytick.labelsize': 12,        # Y-axis tick labels
-        'legend.fontsize': 12,        # Legend
-        'figure.titlesize': 12        # Figure title
-    })
     ax.plot(
         x_i,
         y_i,
         label="Analytical solution",
         color="black",
-        alpha=1.0,
+        alpha=0.75,
         linewidth=2,
     )
     ax.plot(
@@ -701,18 +694,21 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
         color="tab:green",
         linewidth=2
     )
-    ax.axvline(x=1.0, color='gray', linestyle='--', label = "Jump at x = 1.0")
-    ax.set_title(f"L2-error: {l2:0.4e}")
+    ax.axvline(x=1.00, color='gray', linestyle='--', label = "Jump at x = 1.0", alpha=1.0)
+    ax.scatter(x_i, zeros+0.364, color="red", s = 14, label="Collocation Points")
+    ax.set_title(f"L2-error: {l2:0.4e}, Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}")
     ax.set_xticks(np.arange(0, 11, 1))
+    ax.set_ylim(0.3, 1.1)
     #ax.set_ylim(0.35, 1.05)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
-    ax.legend()
+    ax.legend(loc="best")
     ax.grid(True)
-    axins = ax.inset_axes([0.68, 0.35, 0.3, 0.5])
+    axins = ax.inset_axes([0.4, 0.25, 0.3, 0.5])
     axins.plot(x_i, y_i, color="black", linewidth=2)
     axins.plot(x_i, y_hat, color="tab:green", linestyle="--", linewidth=2)
     axins.axvline(x=1.0, color='gray', linestyle='--')
+    axins.scatter(x_i, zeros+0.364, color="red", s = 14)
     axins.set_xlim(0.9, 1.1)
     axins.set_ylim(0.3625, 0.3875)
     axins.set_xticks([0.9, 1.0, 1.1])
@@ -723,8 +719,8 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
     axins.grid(True)
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANNODE_{timestamp}.png")
-    plt.show()
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}.png",dpi = 600)
+    #plt.show()
     ####################################################################################################################
     # Plotting the absolute error between the analytical and PINN solution
     ####################################################################################################################
@@ -763,7 +759,7 @@ def plot_solution(save,x_i, y_hat, y_i, l2, timestamp):
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_abs_{timestamp}.png")
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}.png",dpi = 600)
     #plt.show()
     return None
 def collocationpoints(total_values):
@@ -777,12 +773,13 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interval = 20):
+def create_animation(save,solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs):
     col_exact = col_exact.detach()
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
     line, = ax.plot(col_exact.numpy(), solutions[:,0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
     ax.axvline(x=1.0, color='gray', linestyle='--', label='Jump at x = 1.0')
+    ax.scatter(col_exact.numpy(), np.zeros_like(col_exact.numpy())+0.364, color="red", s = 14, label="Collocation Points")
     #ax.set_xlim(0.4, 1)
     ax.set_ylim(0.3, 1.1)
     ax.set_xlabel("x")
@@ -790,17 +787,17 @@ def create_animation(save,pinn,solutions, col_exact, f_x_exact,timestamp, interv
     ax.legend()
     ax.grid(True)
     i = 0
-    #interval = 1
+    interval = 20
     def animate(i):
         line.set_ydata(solutions[:,i])  # update the data
         epoch = i*interval
-        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e}")
+        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e},Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}")
         return line, ax,
 
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
     if save: 
-        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/KANN_animation_{timestamp}.mp4', writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
-    plt.show()
+        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}.mp4', writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
+    #plt.show()
     return None
 
 def main():
@@ -832,7 +829,7 @@ def main():
         
         # define range and initial value for the ODE
         x_min = 0.0
-        x_max = 1.0
+        x_max = 10.0
         y0 = 1
         logpoints = False
         
@@ -879,7 +876,7 @@ def main():
         loss_mean = 0
         loss = 0
         residual = 0 
-        n_elements = int((n_samples - 2) / n_order)
+        n_elements = int((n_samples - 0) / n_order)
         # initialize the model
         model = KANN(
             n_width=n_width,
@@ -909,7 +906,7 @@ def main():
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx + y-j)
+                        residual = (dydx + y-h)
                     else:
                         with torch.no_grad():
                             system = model.linear_system(x,_,sample,h)
@@ -979,8 +976,8 @@ def main():
         print(f"L2-error: {l2.item():0.4e}")
         solutions = np.hstack([solutions, y_hat])
         
-        create_animation(save,model,solutions, x_i, y_i,timestamp)
-        plot_solution(save,x_i,y_hat, y_i, l2,timestamp)
+        create_animation(save,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs)
+        plot_solution(save,x_i,y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs)
         plt.close('all')
         print(timestamp, f"{loss_mean.item():.4e}",f"{l2.item():.4e}")
         values[run, 0] = n_width
@@ -990,10 +987,10 @@ def main():
         values[run, 4] = l2
         timestamps.append(timestamp)
         n_samples = n_samples + 1
-    if save: 
-        df = pd.DataFrame(values, columns=['n_width', 'n_order', 'n_samples', 'loss', 'l2'])
-        df['timestamp'] = timestamps
-        df.to_excel(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/data_{timestamp}.xlsx", index=False)
+    #if save: 
+    #    df = pd.DataFrame(values, columns=['n_width', 'n_order', 'n_samples', 'loss', 'l2'])
+    #    df['timestamp'] = timestamps
+    #    df.to_excel(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/data_{timestamp}.xlsx", index=False)
     return None
 
 if __name__ == "__main__":
