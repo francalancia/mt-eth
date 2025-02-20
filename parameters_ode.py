@@ -1,9 +1,9 @@
-n_width = 3
-n_order = 2
-n_samples = 31
-n_epochs = 1000
+n_width = 100
+n_order = 1
+n_samples = 81
+n_epochs = 2500
 tol = 1e-26
-autodiff = True
+autodiff = False
 save = False
 show = True
 track_values = False

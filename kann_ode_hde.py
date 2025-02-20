@@ -23,12 +23,12 @@ plt.rcParams.update({
         'figure.titlesize': 12        # Figure title
     })
 
-class LagrangeKANNinner(torch.nn.Module):
+class LagrangeKANNmaninner(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
     def __init__(self, n_width, n_order, n_elements, n_collocation,n_samples, x_min, x_max):
         """Initialize."""
-        super(LagrangeKANNinner, self).__init__()
+        super(LagrangeKANNmaninner, self).__init__()
         self.n_width = n_width
         self.n_order = n_order
         self.n_elements = n_elements
@@ -41,7 +41,6 @@ class LagrangeKANNinner(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
-        
         self.phi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
         self.dphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
         self.ddphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
@@ -187,12 +186,12 @@ class LagrangeKANNinner(torch.nn.Module):
             "ddphi_ikp": self.ddphi_ikp_inner,
             "delta_x": self.delta_x_inner,
         }       
-class LagrangeKANNouter(torch.nn.Module):
+class LagrangeKANNmanouter(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
     def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
         """Initialize."""
-        super(LagrangeKANNouter, self).__init__()
+        super(LagrangeKANNmanouter, self).__init__()
         self.n_width = n_width
         self.n_order = n_order
         self.n_elements = n_elements
@@ -350,7 +349,7 @@ class LagrangeKANNouter(torch.nn.Module):
 class LagrKANNautoinner(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
-    def __init__(self, n_width, n_order, n_elements, n_samples,edge_nodes, x_min, x_max):
+    def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
         """Initialize."""
         super(LagrKANNautoinner, self).__init__()
         self.n_width = n_width
@@ -358,7 +357,6 @@ class LagrKANNautoinner(torch.nn.Module):
         self.n_elements = n_elements
         self.n_nodes = n_elements * n_order + 1
         self.n_samples = n_samples
-        self.edge_nodes = edge_nodes
         self.x_min = x_min
         self.x_max = x_max
 
@@ -442,16 +440,10 @@ class LagrKANNautoinner(torch.nn.Module):
         return ddp_list
 
     def to_ref(self, x_shift, node_l, node_r):
-        """Transform to reference base."""
-        # 2 * (x_shift-n_l)/(n_r-n_l) - 1
-        return (x_shift - (0.5 * (node_l + node_r))) / (0.5 * (node_r - node_l))
-    
-    def to_ref2(self, x_shift, node_l, node_r):
-        return 2 * (x_shift - node_l) / (node_r - node_l) - 1
+        return 2 * (x_shift-node_l)/(node_r-node_l) - 1
 
     # unsure for the meaning of the following function (do we shift from -1 to 1 range to 0 to 49 range?)
     def to_shift(self, x):
-        """Shift from real line to natural line."""
         x_shift = (self.n_nodes - 1) * (x - self.x_min) / (self.x_max - self.x_min)
         return x_shift
 
@@ -471,10 +463,7 @@ class LagrKANNautoinner(torch.nn.Module):
         nodes_in_l = (id_element_in * self.n_order).to(int)
         nodes_in_r = (nodes_in_l + self.n_order).to(int)
 
-        edge_node_l = self.edge_nodes[0]
-        edge_node_r = self.edge_nodes[1]
-
-        x_transformed = self.to_ref(x_shift, edge_node_l, edge_node_r)
+        x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
         delta_x = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
 
         delta_x_1st = delta_x
@@ -517,7 +506,7 @@ class LagrKANNautoinner(torch.nn.Module):
 class LagrKANNautoouter(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
-    def __init__(self, n_width, n_order, n_elements, n_samples,edge_nodes, x_min, x_max):
+    def __init__(self, n_width, n_order, n_elements, n_samples, x_min, x_max):
         """Initialize."""
         super(LagrKANNautoouter, self).__init__()
         self.n_width = n_width
@@ -525,7 +514,6 @@ class LagrKANNautoouter(torch.nn.Module):
         self.n_elements = n_elements
         self.n_nodes = n_elements * n_order + 1
         self.n_samples = n_samples
-        self.edge_nodes = edge_nodes
         self.x_min = x_min
         self.x_max = x_max
 
@@ -609,11 +597,6 @@ class LagrKANNautoouter(torch.nn.Module):
         return ddp_list
 
     def to_ref(self, x_shift, node_l, node_r):
-        """Transform to reference base."""
-        # 2 * (x_shift-n_l)/(n_r-n_l) - 1
-        return (x_shift - (0.5 * (node_l + node_r))) / (0.5 * (node_r - node_l))
-    
-    def to_ref2(self, x_shift, node_l, node_r):
         return 2 * (x_shift - node_l) / (node_r - node_l) - 1
 
     # unsure for the meaning of the following function (do we shift from -1 to 1 range to 0 to 49 range?)
@@ -638,10 +621,7 @@ class LagrKANNautoouter(torch.nn.Module):
         nodes_in_l = (id_element_in * self.n_order).to(int)
         nodes_in_r = (nodes_in_l + self.n_order).to(int)
 
-        edge_node_l = self.edge_nodes[0]
-        edge_node_r = self.edge_nodes[1]
-
-        x_transformed = self.to_ref(x_shift, edge_node_l, edge_node_r)
+        x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
         delta_x = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
 
         delta_x_1st = delta_x
@@ -681,6 +661,9 @@ class LagrKANNautoouter(torch.nn.Module):
             "ddphi_ikp": ddphi_ikp,
             "delta_x": delta_x,
         }
+
+
+
 class KANN(torch.nn.Module):
     """KANN class with Lagrange polynomials."""
 
@@ -690,7 +673,6 @@ class KANN(torch.nn.Module):
         n_order,
         n_elements,
         n_collocation,
-        edge_nodes,
         n_samples,
         x_min,
         x_max,
@@ -703,18 +685,18 @@ class KANN(torch.nn.Module):
         self.n_elements = n_elements
         self.n_nodes = n_elements * n_order + 1
         self.n_collocation = n_collocation
-        self.edge_nodes = edge_nodes
         self.n_samples = n_samples
         self.x_min = x_min
         self.x_max = x_max
         self.autodiff = autodiff
 
         if autodiff:
-            self.inner = LagrKANNautoinner(n_width, n_order, n_elements, n_samples,edge_nodes, x_min, x_max)
-            self.outer = LagrKANNautoouter(n_width, n_order, n_elements, n_samples,edge_nodes, x_min, x_max)
+            self.inner = LagrKANNautoinner(n_width, n_order, n_elements, n_samples, x_min, x_max)
+            self.outer = LagrKANNautoouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
         else: 
-            self.inner = LagrangeKANNinner(n_width, n_order, n_elements,n_collocation, n_samples, x_min, x_max)
-            self.outer = LagrangeKANNouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
+            self.inner = LagrangeKANNmaninner(n_width, n_order, n_elements, n_collocation, n_samples, x_min, x_max)
+            self.outer = LagrangeKANNmanouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
+        
             
         total_params = sum(p.numel() for p in self.parameters())
         nodes_per_width = n_elements * n_order + 1
@@ -1019,13 +1001,11 @@ def main():
     
     y0 = 1.0
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    same_loss_counter = 0
-    previous_loss = 0
     
     # define range and initial value for the ODE
     x_min = 0.0
     x_max = 10.0
-    n_elements = int((n_samples - 2) / n_order)
+    n_elements = int((n_samples - 1) / n_order)
     logpoints = False
     
     if logpoints:
@@ -1050,7 +1030,6 @@ def main():
         col_points = torch.from_numpy(col_points).requires_grad_(True)
     
     x_i = col_points
-    edge_nodes = preprocess_data(x_i,n_order,n_elements, x_min,x_max)
     y_i = f_x_exact
     # create heaviside function for ODE HBC
     heaviside_tensor = heaviside_fct(x_i)
@@ -1060,7 +1039,6 @@ def main():
         n_order=n_order,
         n_elements=n_elements,
         n_collocation = n_samples,
-        edge_nodes = edge_nodes,
         n_samples=1,
         x_min=x_min,
         x_max=x_max,
@@ -1068,6 +1046,9 @@ def main():
     )
     solutions = np.empty((n_samples,1))
     k = 1000
+    residual = 0 
+    _ = 0
+    sample = 0
     with tqdm.trange(n_epochs) as pbar1:
         for _ in pbar1:
             loss_epoch = torch.zeros((n_samples,))
