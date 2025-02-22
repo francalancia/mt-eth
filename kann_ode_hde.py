@@ -662,8 +662,6 @@ class LagrKANNautoouter(torch.nn.Module):
             "delta_x": delta_x,
         }
 
-
-
 class KANN(torch.nn.Module):
     """KANN class with Lagrange polynomials."""
 
@@ -986,7 +984,49 @@ def create_animation(save,show, solutions, col_exact, f_x_exact,n_width, n_order
     if show:
         plt.show()
     return None
+def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2,
+                                n_points_A=15, n_points_B=15, n_points_C=113):
+    """
+    Compute nonuniformly spaced points between x_min and x_max with
+    higher density near cluster1 and between cluster1 and cluster2.
+    
+    Parameters:
+      x_min         : Lower bound of the overall interval.
+      x_max         : Upper bound of the overall interval.
+      cluster1      : A first cluster point (should satisfy x_min < cluster1 < cluster2).
+      cluster2      : A second cluster point (should satisfy cluster1 < cluster2 < x_max).
+      n_points_A    : Number of points in the interval [x_min, cluster1].
+      n_points_B    : Number of points in the interval [cluster1, cluster2].
+      n_points_C    : Number of points in the interval [cluster2, x_max].
+      
+    Returns:
+      A sorted NumPy array of unique points.
+    """
+    # Ensure proper ordering of parameters.
+    assert x_min < cluster1 < cluster2 < x_max, "Ensure x_min < cluster1 < cluster2 < x_max"
+    
+    # Segment A: [x_min, cluster1]
+    # We use a quadratic mapping that clusters points toward cluster1.
+    s = np.linspace(0, 1, n_points_A)
+    # Mapping: when s=0, x = x_min; when s=1, x = cluster1.
+    x_A = cluster1 - (cluster1 - x_min) * (1 - s)**2
 
+    # Segment B: [cluster1, cluster2]
+    # Here we cluster points near cluster1 by mapping quadratically.
+    y = np.linspace(0, 1, n_points_B)
+    # Mapping: when y=0, x = cluster1; when y=1, x = cluster2.
+    x_B = cluster1 + (cluster2 - cluster1) * y**2
+
+    # Segment C: [cluster2, x_max]
+    # A quadratic mapping for a more spread-out distribution in this segment.
+    z = np.linspace(0, 1, n_points_C)
+    # Mapping: when z=0, x = cluster2; when z=1, x = x_max.
+    #x_C = cluster2 + (x_max - cluster2) * z**2
+    x_C = np.linspace(cluster2, x_max, n_points_C)
+    # Combine segments and remove duplicate endpoints (cluster1 and cluster2).
+    x_all = np.unique(np.concatenate((x_A, x_B, x_C)))
+    
+    return x_all
 def main():
     """Execute main routine."""
     n_width = parameters_ode.n_width
@@ -1019,7 +1059,8 @@ def main():
             plt.show()
         col_points = torch.from_numpy(col_points_log).requires_grad_(True)
     else:
-        col_points = np.linspace(x_min, x_max, n_samples)
+        #col_points = np.linspace(x_min, x_max, n_samples)
+        col_points = compute_nonuniform_points()
         f_x_exact = ode_hde(y0, col_points)
         if False:
             plt.figure(figsize=(8, 4))
@@ -1062,7 +1103,7 @@ def main():
                     dydx = torch.autograd.grad(
                         y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                     )[0]
-                    residual = (dydx + y - h)
+                    residual = (dydx + y-h)
                 else:
                     with torch.no_grad():
                         system = model.linear_system(x,_,sample,h,y0)
