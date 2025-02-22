@@ -862,7 +862,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     ax.scatter(x_i, zeros+0.250, color="red", s = 14, label="Collocation Points")
     ax.set_title(f"L2-error: {l2:0.4e}, Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}")
     ax.set_xticks(np.arange(0, 11, 1))
-    ax.set_ylim(0.2, 1.3)
+    #ax.set_ylim(0.2, 1.3)
     #ax.set_ylim(0.35, 1.05)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
@@ -984,8 +984,8 @@ def create_animation(save,show, solutions, col_exact, f_x_exact,n_width, n_order
     if show:
         plt.show()
     return None
-def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2,
-                                n_points_A=15, n_points_B=15, n_points_C=113):
+def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2, 
+                                n_points_A=34, n_points_B=34, n_points_C=65):
     """
     Compute nonuniformly spaced points between x_min and x_max with
     higher density near cluster1 and between cluster1 and cluster2.
@@ -1016,17 +1016,53 @@ def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2,
     y = np.linspace(0, 1, n_points_B)
     # Mapping: when y=0, x = cluster1; when y=1, x = cluster2.
     x_B = cluster1 + (cluster2 - cluster1) * y**2
+    #x_B = cluster1 + (x_max - cluster1) * y**2
+    #x_B = np.linspace(cluster1, x_max, n_points_B)
 
     # Segment C: [cluster2, x_max]
     # A quadratic mapping for a more spread-out distribution in this segment.
     z = np.linspace(0, 1, n_points_C)
     # Mapping: when z=0, x = cluster2; when z=1, x = x_max.
-    #x_C = cluster2 + (x_max - cluster2) * z**2
-    x_C = np.linspace(cluster2, x_max, n_points_C)
+    x_C = cluster2 + (x_max - cluster2) * z**2
+    #x_C = np.linspace(cluster2, x_max, n_points_C)
+    
     # Combine segments and remove duplicate endpoints (cluster1 and cluster2).
+    
     x_all = np.unique(np.concatenate((x_A, x_B, x_C)))
     
     return x_all
+
+def again(n_samples, x_min, x_max):
+    n_points = n_samples
+    # Method 1: Gaussian Distribution Centered Around 1
+    mu, sigma = 1, 0.5  # Mean at 1, small variance
+    x_gaussian = np.random.normal(mu, sigma, int(n_points * 0.3))  # 60% points near 1
+    x_gaussian = x_gaussian[(x_gaussian >= x_min) & (x_gaussian <= x_max)]  # Clip values
+
+    # Method 2: Uniform Sampling for the Rest
+    x_uniform = np.random.uniform(x_min, x_max, int(n_points * 0.7))  # 40% uniform points
+
+    # Combine both sets of points
+    x_combined = np.concatenate((x_gaussian, x_uniform))
+
+    # Ensure at least one point at x = 0, x = 1, and x = 10
+    x_combined = np.append(x_combined, [0, 1, 10])
+
+    # Ensure we have exactly `n_points` total points
+    n_current = len(x_combined)
+    if n_current > n_points:
+        # If too many points, randomly remove excess (except 0, 1, 10)
+        x_combined = np.random.choice(x_combined, n_points - 3, replace=False)
+        x_combined = np.concatenate(([0, 1, 10], x_combined))
+    elif n_current < n_points:
+        # If too few points, add more from uniform distribution
+        additional_points = np.random.uniform(x_min, x_max, n_points - n_current)
+        x_combined = np.concatenate((x_combined, additional_points))
+
+    # Sort the final points
+    x_combined.sort()
+    return x_combined
+
 def main():
     """Execute main routine."""
     n_width = parameters_ode.n_width
@@ -1060,6 +1096,7 @@ def main():
         col_points = torch.from_numpy(col_points_log).requires_grad_(True)
     else:
         #col_points = np.linspace(x_min, x_max, n_samples)
+        #col_points = again(n_samples, x_min, x_max)
         col_points = compute_nonuniform_points()
         f_x_exact = ode_hde(y0, col_points)
         if False:
