@@ -901,7 +901,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     axins.grid(True)
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/study_BC/KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
     if show:
         plt.show()
     ####################################################################################################################
@@ -926,12 +926,14 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     ax_bl.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     ax_bl.set_xlabel("x")
     ax_bl.set_xlim(0, 0.95)
+    ax_bl.set_ylim(0, 0.01)
     ax_bl.set_ylabel("Absolute error")
     ax_bl.grid()
     
     ax_bm.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     ax_bm.set_xlabel("x")
     ax_bm.set_xlim(0.85, 1.15)
+    ax_bm.set_ylim(0, 0.02)
     #ax_bm.set_ylabel("Absolute error")
     ax_bm.grid()
     
@@ -942,7 +944,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/study_BC/KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
     if show:
         plt.show()
     return None
@@ -980,12 +982,12 @@ def create_animation(save,show, solutions, col_exact, f_x_exact,n_width, n_order
 
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
     if save: 
-        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs},y{y0}.mp4', writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
+        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/study_BC/KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.mp4', writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
     if show:
         plt.show()
     return None
 def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2, 
-                                n_points_A=34, n_points_B=34, n_points_C=65):
+                                n_points_A=64, n_points_B=64, n_points_C=285):
     """
     Compute nonuniformly spaced points between x_min and x_max with
     higher density near cluster1 and between cluster1 and cluster2.
@@ -1074,14 +1076,13 @@ def main():
     save = parameters_ode.save
     show = parameters_ode.show
     track_values = parameters_ode.track_values
-    
-    y0 = 1.0
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # define range and initial value for the ODE
     x_min = 0.0
     x_max = 10.0
-    n_elements = int((n_samples - 1) / n_order)
+    y0 = 1.2
+    n_elements = int((n_samples - 2) / n_order)
     logpoints = False
     
     if logpoints:
@@ -1095,9 +1096,9 @@ def main():
             plt.show()
         col_points = torch.from_numpy(col_points_log).requires_grad_(True)
     else:
-        #col_points = np.linspace(x_min, x_max, n_samples)
+        col_points = np.linspace(x_min, x_max, n_samples)
         #col_points = again(n_samples, x_min, x_max)
-        col_points = compute_nonuniform_points()
+        #col_points = compute_nonuniform_points()
         f_x_exact = ode_hde(y0, col_points)
         if False:
             plt.figure(figsize=(8, 4))
