@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 import torch
+import torch.nn.init as init
 import tqdm
 import parameters_ode
 import pandas as pd
@@ -41,6 +42,7 @@ class LagrangeKANNmaninner(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
+        init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
         self.phi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
         self.dphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
         self.ddphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
@@ -203,7 +205,7 @@ class LagrangeKANNmanouter(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
-        
+        init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
         nodes = torch.linspace(-1.0, 1.0, n_order + 1)
@@ -901,7 +903,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     axins.grid(True)
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/study_BC/KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/Kaiming_densitydist/KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
     if show:
         plt.show()
     ####################################################################################################################
@@ -944,7 +946,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/study_BC/KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
+        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/Kaiming_densitydist/KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
     if show:
         plt.show()
     return None
@@ -982,12 +984,12 @@ def create_animation(save,show, solutions, col_exact, f_x_exact,n_width, n_order
 
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
     if save: 
-        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/study_BC/KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.mp4', writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
+        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/Kaiming_densitydist/KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.mp4', writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
     if show:
         plt.show()
     return None
 def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2, 
-                                n_points_A=64, n_points_B=64, n_points_C=285):
+                                n_points_A=34, n_points_B=34, n_points_C=65):
     """
     Compute nonuniformly spaced points between x_min and x_max with
     higher density near cluster1 and between cluster1 and cluster2.
@@ -1025,45 +1027,14 @@ def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2,
     # A quadratic mapping for a more spread-out distribution in this segment.
     z = np.linspace(0, 1, n_points_C)
     # Mapping: when z=0, x = cluster2; when z=1, x = x_max.
-    x_C = cluster2 + (x_max - cluster2) * z**2
-    #x_C = np.linspace(cluster2, x_max, n_points_C)
+    #x_C = cluster2 + (x_max - cluster2) * z**2
+    x_C = np.linspace(cluster2, x_max, n_points_C)
     
     # Combine segments and remove duplicate endpoints (cluster1 and cluster2).
     
     x_all = np.unique(np.concatenate((x_A, x_B, x_C)))
     
     return x_all
-
-def again(n_samples, x_min, x_max):
-    n_points = n_samples
-    # Method 1: Gaussian Distribution Centered Around 1
-    mu, sigma = 1, 0.5  # Mean at 1, small variance
-    x_gaussian = np.random.normal(mu, sigma, int(n_points * 0.3))  # 60% points near 1
-    x_gaussian = x_gaussian[(x_gaussian >= x_min) & (x_gaussian <= x_max)]  # Clip values
-
-    # Method 2: Uniform Sampling for the Rest
-    x_uniform = np.random.uniform(x_min, x_max, int(n_points * 0.7))  # 40% uniform points
-
-    # Combine both sets of points
-    x_combined = np.concatenate((x_gaussian, x_uniform))
-
-    # Ensure at least one point at x = 0, x = 1, and x = 10
-    x_combined = np.append(x_combined, [0, 1, 10])
-
-    # Ensure we have exactly `n_points` total points
-    n_current = len(x_combined)
-    if n_current > n_points:
-        # If too many points, randomly remove excess (except 0, 1, 10)
-        x_combined = np.random.choice(x_combined, n_points - 3, replace=False)
-        x_combined = np.concatenate(([0, 1, 10], x_combined))
-    elif n_current < n_points:
-        # If too few points, add more from uniform distribution
-        additional_points = np.random.uniform(x_min, x_max, n_points - n_current)
-        x_combined = np.concatenate((x_combined, additional_points))
-
-    # Sort the final points
-    x_combined.sort()
-    return x_combined
 
 def main():
     """Execute main routine."""
@@ -1081,7 +1052,7 @@ def main():
     # define range and initial value for the ODE
     x_min = 0.0
     x_max = 10.0
-    y0 = 1.2
+    y0 = 1.0
     n_elements = int((n_samples - 2) / n_order)
     logpoints = False
     
@@ -1097,7 +1068,6 @@ def main():
         col_points = torch.from_numpy(col_points_log).requires_grad_(True)
     else:
         col_points = np.linspace(x_min, x_max, n_samples)
-        #col_points = again(n_samples, x_min, x_max)
         #col_points = compute_nonuniform_points()
         f_x_exact = ode_hde(y0, col_points)
         if False:
