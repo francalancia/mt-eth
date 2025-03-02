@@ -7,6 +7,7 @@ import tqdm
 import parameters_ode
 import pandas as pd
 import numpy as np
+import os
 from scipy.integrate import odeint
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
@@ -42,7 +43,7 @@ class LagrangeKANNmaninner(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
-        init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
+        #init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
         self.phi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
         self.dphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
         self.ddphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
@@ -205,7 +206,7 @@ class LagrangeKANNmanouter(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
-        init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
+        #init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
         nodes = torch.linspace(-1.0, 1.0, n_order + 1)
@@ -710,6 +711,7 @@ class KANN(torch.nn.Module):
 
     def forward(self, x, epoch, sample):
         """Forward pass for whole batch."""
+        #coor = x[0]
         if self.autodiff is True:
             x = self.inner(x)["t_ik"]
             x = self.outer(x)["t_ik"]
@@ -718,6 +720,7 @@ class KANN(torch.nn.Module):
             x = self.inner(x,epoch,sample)["t_ik"]
             x = self.outer(x)["t_ik"]
             x = torch.einsum("ik -> i", x)
+            
         return x
 
     def linear_system(self, x, epoch,sample,h,y0):
@@ -834,7 +837,7 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
-def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0): 
+def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0): 
     x_i = x_i.detach().view(-1,1).numpy()
     zeros = np.zeros_like(x_i)
     error_abs = np.abs(y_i - y_hat)
@@ -903,7 +906,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     axins.grid(True)
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/Kaiming_densitydist/KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
+        plt.savefig(os.path.join(saveloc,f"KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png"),dpi = 600)
     if show:
         plt.show()
     ####################################################################################################################
@@ -946,7 +949,7 @@ def plot_solution(save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_e
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(f"E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/Kaiming_densitydist/KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png",dpi = 600)
+        plt.savefig(os.path.join(saveloc,f"KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png"),dpi = 600)
     if show:
         plt.show()
     return None
@@ -961,7 +964,7 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0):
+def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(12, 7))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -984,7 +987,7 @@ def create_animation(save,show, solutions, col_exact, f_x_exact,n_width, n_order
 
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
     if save: 
-        ani.save(f'E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Improved/Kaiming_densitydist/KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.mp4', writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
+        ani.save(os.path.join(saveloc,f'KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.mp4'), writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
     if show:
         plt.show()
     return None
@@ -1047,13 +1050,14 @@ def main():
     save = parameters_ode.save
     show = parameters_ode.show
     track_values = parameters_ode.track_values
+    saveloc = parameters_ode.saveloc
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     # define range and initial value for the ODE
     x_min = 0.0
     x_max = 10.0
     y0 = 1.0
-    n_elements = int((n_samples - 2) / n_order)
+    n_elements = int((n_samples - 1) / n_order)
     logpoints = False
     
     if logpoints:
@@ -1080,6 +1084,9 @@ def main():
     
     x_i = col_points
     y_i = f_x_exact
+    # add additional dimension to the input data
+    #contant = torch.ones_like(x_i)
+    #x_i = torch.stack([x_i, contant], dim=1)
     # create heaviside function for ODE HBC
     heaviside_tensor = heaviside_fct(x_i)
 
@@ -1105,13 +1112,13 @@ def main():
                 loss = 0  
                 x = x_i[sample].unsqueeze(-1)
                 h = heaviside_tensor[sample].unsqueeze(-1)
-                j = jump = 1/(1 + torch.exp(-k*(x - 1.0)))
+                #j = jump = 1/(1 + torch.exp(-k*(x - 1.0)))
                 if autodiff is True:
-                    y = y0 + x * (model(x,_,sample))
+                    y = y0 + x*(model(x,_,sample))
                     dydx = torch.autograd.grad(
                         y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                     )[0]
-                    residual = (dydx + y-h)
+                    residual = (dydx + y - h)
                 else:
                     with torch.no_grad():
                         system = model.linear_system(x,_,sample,h,y0)
@@ -1175,8 +1182,8 @@ def main():
     print(f"L2-error: {l2.item():0.4e}")
     solutions = np.hstack([solutions, y_hat])
     
-    create_animation(save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0)
-    plot_solution(save,show,x_i,y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0)
+    create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0)
+    plot_solution(saveloc,save,show,x_i,y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0)
     plt.close('all')
     print(timestamp, f"{loss_mean.item():.4e}",f"{l2.item():.4e}")
     return None
