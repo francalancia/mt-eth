@@ -837,7 +837,7 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
-def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0): 
+def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing): 
     x_i = x_i.detach().view(-1,1).numpy()
     zeros = np.zeros_like(x_i)
     error_abs = np.abs(y_i - y_hat)
@@ -906,7 +906,7 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     axins.grid(True)
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
-        plt.savefig(os.path.join(saveloc,f"KANNODE_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png"),dpi = 600)
+        plt.savefig(os.path.join(saveloc,f"KANNODE_w{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.png"),dpi = 600)
     if show:
         plt.show()
     ####################################################################################################################
@@ -949,10 +949,10 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(os.path.join(saveloc,f"KANN_abs_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.png"),dpi = 600)
+        plt.savefig(os.path.join(saveloc,f"KANN_abs_w{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.png"),dpi = 600)
     if show:
         plt.show()
-    return None
+    return error_abs
 def collocationpoints(total_values):
     nval1 = total_values // 5
     nval2 = total_values - nval1
@@ -964,7 +964,7 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0):
+def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0,spacing):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(12, 7))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -987,7 +987,7 @@ def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width,
 
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
     if save: 
-        ani.save(os.path.join(saveloc,f'KANN_animation_w{n_width}o{n_order}s{n_samples}e{n_epochs}y{y0}.mp4'), writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
+        ani.save(os.path.join(saveloc,f'KANN_animation_w{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.mp4'), writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
     if show:
         plt.show()
     return None
@@ -1057,7 +1057,8 @@ def main():
     x_min = 0.0
     x_max = 10.0
     y0 = 1.0
-    n_elements = int((n_samples - 1) / n_order)
+    spacing = 1
+    n_elements = int((n_samples - spacing) / n_order)
     logpoints = False
     
     if logpoints:
@@ -1182,10 +1183,14 @@ def main():
     print(f"L2-error: {l2.item():0.4e}")
     solutions = np.hstack([solutions, y_hat])
     
-    create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0)
-    plot_solution(saveloc,save,show,x_i,y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0)
+    create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing)
+    error_abs = plot_solution(saveloc,save,show,x_i,y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing)
     plt.close('all')
     print(timestamp, f"{loss_mean.item():.4e}",f"{l2.item():.4e}")
+    if save:
+        np.savetxt(os.path.join(saveloc,f"data{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), solutions, delimiter=",")
+        np.savetxt(os.path.join(saveloc,f"dataABS{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), error_abs, delimiter=",")
+        print("Data saved to csv file.")
     return None
 
 if __name__ == "__main__":

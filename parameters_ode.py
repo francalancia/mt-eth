@@ -1,10 +1,10 @@
-n_width = 4
+n_width = 1
 n_order = 1
-n_samples = 161
-n_epochs = 1000
+n_samples = 151
+n_epochs = 10
 tol = 1e-26
 autodiff = False
 save = True
 show = False
 track_values = False
-saveloc = "C:/Users/3399n/Documents/ETH/MasterThesis/Data_ODE2/KANN_V2/Element/"
+saveloc = "E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Small/"
