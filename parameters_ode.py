@@ -1,10 +1,11 @@
 n_width = 1
 n_order = 1
-n_samples = 151
-n_epochs = 10
+n_samples = 3
+n_epochs = 2000
 tol = 1e-26
-autodiff = False
-save = True
-show = False
+interval = 20
+autodiff = True
+save = False
+show = True
 track_values = False
-saveloc = "E:/ETH/Master/25HS_MA/Data_ODE2/KANN/Small/"
+saveloc = "E:/ETH/Master/25HS_MA/Data_ODE2/KANN_V3/Limited/"

@@ -17,12 +17,12 @@ import datetime
 torch.set_default_dtype(torch.float64)
 # set the default plotting sizes
 plt.rcParams.update({
-        'font.size': 14,              # Base font size
+        'font.size': 12,              # Base font size
         'axes.labelsize': 12,         # Axis labels
         'xtick.labelsize': 12,        # X-axis tick labels
         'ytick.labelsize': 12,        # Y-axis tick labels
         'legend.fontsize': 12,        # Legend
-        'figure.titlesize': 12        # Figure title
+        'figure.titlesize': 10        # Figure title
     })
 
 class LagrangeKANNmaninner(torch.nn.Module):
@@ -452,6 +452,8 @@ class LagrKANNautoinner(torch.nn.Module):
 
     def forward(self, x):
         """Forward pass for whole batch."""
+        #if len(x.shape) == 1:
+        #    raise SystemExit("Input must be 2D")
         if len(x.shape) != 2:
             x = x.unsqueeze(-1)
             x = torch.repeat_interleave(x, self.n_width, -1)
@@ -755,7 +757,7 @@ class KANN(torch.nn.Module):
         y = y0 + x * y1
         dy = torch.einsum("i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik) + y1
         b = dy + y - h
-        return {"A_inner": A_inner, "A_outer": A_outer, "b": b}
+        return {"A_inner": A_inner, "A_outer": A_outer, "b": b, "y": y, "dy": dy}
 
 def ode_hde(y0,x):
     
@@ -837,7 +839,7 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
-def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing): 
+def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str): 
     x_i = x_i.detach().view(-1,1).numpy()
     zeros = np.zeros_like(x_i)
     error_abs = np.abs(y_i - y_hat)
@@ -865,15 +867,16 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     )
     ax.axvline(x=1.00, color='gray', linestyle='--', label = "Jump at x = 1.0", alpha=1.0)
     ax.scatter(x_i, zeros+0.250, color="red", s = 14, label="Collocation Points")
-    ax.set_title(f"L2-error: {l2:0.4e}, Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}")
-    ax.set_xticks(np.arange(0, 11, 1))
+    ax.set_title(f"L2-error: {l2:0.4e}, Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}, Spacing: {spacing}, training loss: {loss_str}")
+    ax.set_xticks(np.arange(0, x_max+1, 1))
     #ax.set_ylim(0.2, 1.3)
     #ax.set_ylim(0.35, 1.05)
     ax.set_xlabel("x")
     ax.set_ylabel("f(x)")
     ax.legend(loc="best")
     ax.grid(True)
-    axins = ax.inset_axes([0.4625, 0.25, 0.275, 0.45])
+    #axins = ax.inset_axes([0.4625, 0.25, 0.275, 0.45])
+    axins = ax.inset_axes([0.75, 0.1, 0.2, 0.35])
     axins.plot(x_i, y_i, color="black", linewidth=2)
     axins.plot(x_i, y_hat, color="tab:green", linestyle="--", linewidth=2)
     axins.axvline(x=1.0, color='gray', linestyle='--')
@@ -923,8 +926,8 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     ax_top.legend()
     ax_top.set_title("Absolute error between Analytical and PINN")
     ax_top.set_xlabel("x")
-    ax_top.set_xticks(np.arange(0, 10, 1))
-    ax_top.set_xlim(0, 10)
+    ax_top.set_xticks(np.arange(0, x_max+1, 1))
+    ax_top.set_xlim(0, x_max)
     ax_top.set_ylabel("Absolute error")
     ax_top.grid()
     
@@ -944,7 +947,7 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     
     ax_br.plot(x_i, error_abs, label="Absolute error between Analytical and PINN", color="red", alpha=1.0, linewidth=2)
     ax_br.set_xlabel("x")
-    ax_br.set_xlim(1.05, 10)
+    ax_br.set_xlim(1.05, x_max)
     #ax_br.set_ylabel("Absolute error")
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
@@ -964,7 +967,7 @@ def collocationpoints(total_values):
     combined = torch.cat((log_values2, log_values))
     combined = combined.detach().numpy()
     return combined
-def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0,spacing):
+def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0,spacing,x_max,interval1):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(12, 7))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
@@ -977,11 +980,9 @@ def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width,
     ax.set_ylabel("f(x)")
     ax.legend()
     ax.grid(True)
-    i = 0
-    interval = 10
     def animate(i):
         line.set_ydata(solutions[:,i])  # update the data
-        epoch = i*interval
+        epoch = i*interval1
         ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e},Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}")
         return line, ax,
 
@@ -1052,145 +1053,185 @@ def main():
     track_values = parameters_ode.track_values
     saveloc = parameters_ode.saveloc
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # define range and initial value for the ODE
-    x_min = 0.0
-    x_max = 10.0
-    y0 = 1.0
-    spacing = 1
-    n_elements = int((n_samples - spacing) / n_order)
-    logpoints = False
-    
-    if logpoints:
-        col_points_log = collocationpoints(n_samples)
-        f_x_exact = ode_hde(y0, col_points_log)
-        if False:
-            plt.figure(figsize=(8, 4))
-            plt.plot(col_points_log, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-            plt.scatter(col_points_log, np.zeros_like(col_points_log)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-            plt.grid()
-            plt.show()
-        col_points = torch.from_numpy(col_points_log).requires_grad_(True)
-    else:
-        col_points = np.linspace(x_min, x_max, n_samples)
-        #col_points = compute_nonuniform_points()
-        f_x_exact = ode_hde(y0, col_points)
-        if False:
-            plt.figure(figsize=(8, 4))
-            plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-            plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-            plt.grid()
-            plt.show()
-        col_points = torch.from_numpy(col_points).requires_grad_(True)
-    
-    x_i = col_points
-    y_i = f_x_exact
-    # add additional dimension to the input data
-    #contant = torch.ones_like(x_i)
-    #x_i = torch.stack([x_i, contant], dim=1)
-    # create heaviside function for ODE HBC
-    heaviside_tensor = heaviside_fct(x_i)
+    interval1 = parameters_ode.interval
+    for i in range(1):
+        # define range and initial value for the ODE
+        x_min = 0.0
+        x_max = 2.0
+        y0 = 1.0
+        spacing = 1
+        n_elements = int((n_samples - spacing) / n_order)
+        logpoints = False
+        
+        if logpoints:
+            col_points_log = collocationpoints(n_samples)
+            f_x_exact = ode_hde(y0, col_points_log)
+            if False:
+                plt.figure(figsize=(8, 4))
+                plt.plot(col_points_log, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
+                plt.scatter(col_points_log, np.zeros_like(col_points_log)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+                plt.grid()
+                plt.show()
+            col_points = torch.from_numpy(col_points_log).requires_grad_(True)
+        else:
+            col_points = np.linspace(x_min, x_max, n_samples)
+            const_points = np.zeros_like(col_points)
+            #col_points = compute_nonuniform_points()
+            f_x_exact = ode_hde(y0, col_points)
+            if False:
+                plt.figure(figsize=(8, 4))
+                plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
+                plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+                plt.grid()
+                plt.show()
+            col_points = torch.from_numpy(col_points).requires_grad_(True)
+            const_points = torch.from_numpy(const_points).requires_grad_(True)
+        
+        x_i = col_points
+        y_i = f_x_exact
+        const_i = const_points
+        # add additional dimension to the input data
+        #contant = torch.ones_like(x_i)
+        #x_i = torch.stack([x_i, contant], dim=1)
+        # create heaviside function for ODE HBC
+        heaviside_tensor = heaviside_fct(x_i)
 
-    model = KANN(
-        n_width=n_width,
-        n_order=n_order,
-        n_elements=n_elements,
-        n_collocation = n_samples,
-        n_samples=1,
-        x_min=x_min,
-        x_max=x_max,
-        autodiff=autodiff,
-    )
-    solutions = np.empty((n_samples,1))
-    k = 1000
-    residual = 0 
-    _ = 0
-    sample = 0
-    with tqdm.trange(n_epochs) as pbar1:
-        for _ in pbar1:
-            loss_epoch = torch.zeros((n_samples,))
-            for sample in range(n_samples):    
-                loss = 0  
-                x = x_i[sample].unsqueeze(-1)
-                h = heaviside_tensor[sample].unsqueeze(-1)
-                #j = jump = 1/(1 + torch.exp(-k*(x - 1.0)))
-                if autodiff is True:
-                    y = y0 + x*(model(x,_,sample))
-                    dydx = torch.autograd.grad(
-                        y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
-                    )[0]
-                    residual = (dydx + y - h)
-                else:
-                    with torch.no_grad():
-                        system = model.linear_system(x,_,sample,h,y0)
-                        A_inner = system["A_inner"]
-                        A_outer = system["A_outer"]
-                        residual = system["b"]
-
-                loss = torch.mean(torch.square(residual))
-                #loss2 = torch.norm(residual)
-                #loss = residual
-                
-                if autodiff is True:
-                    g_lst = torch.autograd.grad(
-                        outputs=residual,
-                        inputs=model.parameters(),
-                    )
-                    norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
-                else:
-                    g_lst = [A_inner, A_outer]
-
-                    norm = (
-                        torch.linalg.norm(A_inner) ** 2
-                        + torch.linalg.norm(A_outer) ** 2
-                    )
-                    
-                # Kaczmarz update
-                for p, g in zip(model.parameters(), g_lst):
-                    update = (residual / norm) * torch.squeeze(g)
-                    p.data -= update
-
-                loss_epoch[sample] = loss
-
-            loss_mean = torch.mean(loss_epoch)
-            loss_str = f"{loss_mean.item():0.4e}"
-
-            pbar1.set_postfix(loss=loss_str)
-
-            Tickrate = pbar1.format_dict['rate']
-            if _ % 10 == 0:
-                with torch.no_grad():
-                    sampleeval = 0
-                    vec = torch.zeros(n_samples)
-                    for sampleeval in range(n_samples):
-                        x = x_i[sampleeval].unsqueeze(-1)
-                        vec[sampleeval] = y0+x*model(x,_,sampleeval)
-                    vec = vec.detach().numpy().reshape(-1,1)
-                    if _ == 0:
-                        solutions = vec
+        model = KANN(
+            n_width=n_width,
+            n_order=n_order,
+            n_elements=n_elements,
+            n_collocation = n_samples,
+            n_samples=1,
+            x_min=x_min,
+            x_max=x_max,
+            autodiff=autodiff,
+        )
+        solutions = np.empty((n_samples,1))
+        with torch.no_grad():
+            data = torch.zeros((n_samples,n_epochs+3))
+            data[:,0] = x_i.view(-1)
+            y_i_torch = torch.from_numpy(y_i)
+            data[:,1] = y_i_torch.view(-1)
+            dataGrad = torch.zeros((n_samples,n_epochs+2))
+            dataGrad[:,0] = x_i.view(-1)
+        k = 1000
+        residual = 0 
+        _ = 0
+        sample = 0
+        
+        with tqdm.trange(n_epochs) as pbar1:
+            for _ in pbar1:
+                loss_epoch = torch.zeros((n_samples,))
+                for sample in range(n_samples):    
+                    loss = 0  
+                    x = x_i[sample].unsqueeze(-1)
+                    const = const_i[sample].unsqueeze(-1)
+                    h = heaviside_tensor[sample].unsqueeze(-1)
+                    j = 1/(1 + torch.exp(-k*(x - 1.0)))
+                    if autodiff is True:
+                        #model_input = torch.cat([x, const], dim=0).unsqueeze(0)
+                        model_input = x
+                        #print(model_input.shape)
+                        #exit()
+                        y = y0 + x*(model(model_input,_,sample))
+                        dydx = torch.autograd.grad(
+                            y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
+                        )[0]
+                        residual = (dydx + y - h)
                     else:
-                        solutions = np.hstack([solutions, vec])
-    
+                        with torch.no_grad():
+                            system = model.linear_system(x,_,sample,h,y0)
+                            A_inner = system["A_inner"]
+                            A_outer = system["A_outer"]
+                            residual = system["b"]
+                            y = system["y"]
+                            dydx = system["dy"]
 
-    print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
-    with torch.no_grad():
-        y_hat = torch.zeros_like(x_i)
+                    # Fill data into tensors for saving
+                    data[sample,_+2] = y.view(-1)
+                    dataGrad[sample,_+1] = dydx.view(-1)
+                    
+                    loss = torch.mean(torch.square(residual))
+                    #loss2 = torch.norm(residual)
+                    #loss = residual
+                    
+                    if autodiff is True:
+                        g_lst = torch.autograd.grad(
+                            outputs=residual,
+                            inputs=model.parameters(),
+                        )
+                        norm = torch.linalg.norm(torch.hstack(g_lst))**2
+                    else:
+                        g_lst = [A_inner, A_outer]
+
+                        norm = (
+                            torch.linalg.norm(A_inner) ** 2
+                            + torch.linalg.norm(A_outer) ** 2
+                        )
+                    
+                    # Kaczmarz update
+                    for p, g in zip(model.parameters(), g_lst):
+                        update = 0.8*(residual / norm) * torch.squeeze(g)
+                        p.data -= update
+
+                    loss_epoch[sample] = loss
+
+                loss_mean = torch.mean(loss_epoch)
+                loss_str = f"{loss_mean.item():0.4e}"
+
+                pbar1.set_postfix(loss=loss_str)
+
+                Tickrate = pbar1.format_dict['rate']
+                if _ % interval1 == 0:
+                    with torch.no_grad():
+                        sampleeval = 0
+                        vec = torch.zeros(n_samples)
+                        for sampleeval in range(n_samples):
+                            x = x_i[sampleeval].unsqueeze(-1)
+                            vec[sampleeval] = y0+x*model(x,_,sampleeval)
+                        vec = vec.detach().numpy().reshape(-1,1)
+                        if _ == 0:
+                            solutions = vec
+                        else:
+                            solutions = np.hstack([solutions, vec])
+        
+
+        print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
+        # Create the Final Ouput of your Model
+        y_hatvec = torch.zeros_like(x_i)
+        dydy_hatvec = torch.zeros_like(x_i)
         for sample in range(n_samples):
             x = x_i[sample].unsqueeze(-1)
-            y_hat[sample] = y0 + x * model(x,_,sample)
-    y_hat = y_hat.view(-1,1).numpy()
-    l2 = np.linalg.norm(y_i - y_hat)
-    print(f"L2-error: {l2.item():0.4e}")
-    solutions = np.hstack([solutions, y_hat])
-    
-    create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing)
-    error_abs = plot_solution(saveloc,save,show,x_i,y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing)
-    plt.close('all')
-    print(timestamp, f"{loss_mean.item():.4e}",f"{l2.item():.4e}")
-    if save:
-        np.savetxt(os.path.join(saveloc,f"data{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), solutions, delimiter=",")
-        np.savetxt(os.path.join(saveloc,f"dataABS{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), error_abs, delimiter=",")
+            y_hat = y0 + x * model(x,_,sample)
+            dydy_hat= torch.autograd.grad(
+                        y_hat, x, torch.ones_like(x), create_graph=True, materialize_grads=True
+                    )[0]
+            y_hatvec[sample] = y_hat
+            dydy_hatvec[sample] = dydy_hat
+                
+        y_hatvec = y_hatvec.detach()
+        dydy_hatvec = dydy_hatvec.detach()
+        data[:,n_epochs+2] = y_hatvec
+        dataGrad[:,n_epochs+1] = dydy_hatvec
+        y_hatvec = y_hatvec.view(-1,1).numpy()
+        dydy_hatvec = dydy_hatvec.view(-1,1).numpy()
+        l2 = np.linalg.norm(y_i - y_hatvec)
+        print(f"L2-error: {l2.item():0.4e}")
+        solutions = np.hstack([solutions, y_hatvec])
+        
+        create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing,x_max,interval1)
+        error_abs = plot_solution(saveloc,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str)
+        plt.close('all')
+        print(timestamp, f"{loss_mean.item():.4e}",f"{l2.item():.4e}")
+        
+        data = data.detach().numpy()
+        dataGrad = dataGrad.detach().numpy()
+        np.savetxt(os.path.join(saveloc,f"data{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), data, delimiter=",",fmt='%1.3f')
+        np.savetxt(os.path.join(saveloc,f"datagrad{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), dataGrad, delimiter=",",fmt='%1.3f')
+        #np.savetxt(os.path.join(saveloc,f"data{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), solutions, delimiter=",")
+        #np.savetxt(os.path.join(saveloc,f"dataABS{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.csv"), error_abs, delimiter=",")
         print("Data saved to csv file.")
+        n_width = n_width + 1
     return None
 
 if __name__ == "__main__":
