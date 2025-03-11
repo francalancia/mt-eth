@@ -1,0 +1,11 @@
+n_width = 1
+n_order = 1
+n_samples = 301
+n_epochs = 4000
+tol = 1e-26
+autodiff = False
+regression = False
+speedup = True
+prestop = False
+save = False
+runs = 1
