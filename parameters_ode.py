@@ -1,4 +1,4 @@
-n_width = 7
+n_width = 2
 n_order = 1
 n_samples = 5
 n_epochs = 2000
