@@ -1,8 +1,7 @@
 n_width = 1
-n_order = 1
-n_samples = 3
-n_epochs = 2000
-tol = 1e-26
+n_order = 2
+n_samples = 82
+n_epochs = 1000
 interval = 20
 autodiff = True
 save = False
