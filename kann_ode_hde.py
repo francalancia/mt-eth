@@ -1062,7 +1062,7 @@ def main():
     
     # Define range and initial value for the ODE [could be also put into the conifg file later]
     x_min = 0.0
-    x_max = 2.0
+    x_max = 10.0
     y0 = 1.0
     
     # For the parametrized ODE, we need to define the number of input dimensions
@@ -1160,8 +1160,9 @@ def main():
                         dydx = system["dy"]
 
                 # Fill data into tensors for saving
-                data[sample,_+2] = y.view(-1)
-                dataGrad[sample,_+1] = dydx.view(-1)
+                with torch.no_grad():
+                    data[sample,_+2] = y.view(-1)
+                    dataGrad[sample,_+1] = dydx.view(-1)
                 
                 loss = torch.mean(torch.square(residual))
                 #loss2 = torch.norm(residual)
