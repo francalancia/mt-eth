@@ -25,11 +25,13 @@ if False:
     plt.scatter(np.logspace(0, np.log10(5), num=11, base=10), np.zeros(11)+0.02, color='green')
     plt.grid()
     plt.show()
-col_points = np.linspace(0, 10, 11)
-col_points = torch.from_numpy(col_points).requires_grad_(True)
-x_i = col_points
-j = torch.zeros_like(x_i)
+vector = np.zeros(10)
+index = 0
+tot_runs = 2
 
-combine = torch.stack((x_i, j), dim=1)
-a = combine[:, 0]
-print(a)
+for i in range(2):
+    for j in range(5):
+        vector[index] = 1
+        index += 1
+
+print(vector)

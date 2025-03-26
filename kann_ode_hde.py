@@ -1060,9 +1060,10 @@ def main():
     y0 = parameters_ode.y0
     step_loc = parameters_ode.step_loc
     ndim_in = parameters_ode.ndim_in
-    k = parameters_ode.k
-    log_fct = parameters_ode.log_fct
     
+    log_fct = parameters_ode.log_fct
+    k = parameters_ode.k
+
     # Solving Methods
     autodiff = parameters_ode.autodiff
     
@@ -1074,7 +1075,7 @@ def main():
     anim_intvl = parameters_ode.animation_interval
     
     Tot_runs = parameters_ode.Tot_runs
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     for run in range(Tot_runs):
         print(f"\nRun {run+1} of {Tot_runs}")
         # Calculate the number of elements
@@ -1154,9 +1155,9 @@ def main():
                         j = 1/(1 + torch.exp(-k*(x - step_loc)))
                     else:
                         j = heaviside_tensor[sample].unsqueeze(-1)
-                    const = const_i[sample].unsqueeze(-1)
+                    #const = const_i[sample].unsqueeze(-1)
                     if autodiff is True:
-                        model_input = torch.cat([x, const], dim=0).unsqueeze(0)
+                        model_input = torch.cat([x, j], dim=0).unsqueeze(0)
                         y = y0 + x*(model(model_input,_,sample))
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
@@ -1250,8 +1251,8 @@ def main():
                 j = 1/(1 + torch.exp(-k*(x - step_loc)))
             else:
                 j = heaviside_tensor[sample].unsqueeze(-1)
-            const = const_i[sample].unsqueeze(-1)
-            model_input = torch.cat([x, const], dim=0).unsqueeze(0)
+            #const = const_i[sample].unsqueeze(-1)
+            model_input = torch.cat([x, j], dim=0).unsqueeze(0)
             y_hat = y0 + x * model(model_input,_,sample)
             dydy_hat= torch.autograd.grad(
                         y_hat, x, torch.ones_like(x)

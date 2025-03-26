@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.init as init
 import tqdm
-import parameters_ode
+import parameters_ode_param
 import pandas as pd
 import numpy as np
 import os
@@ -895,8 +895,15 @@ def plot_solution(saveloc,save_name,save,show,x_i, y_hat, y_i, l2, n_width, n_or
     axins.plot(x_i, y_i, color="black", linewidth=2)
     axins.plot(x_i, y_hat, color="tab:green", linestyle="--", linewidth=2)
     axins.axvline(x=jump_loc, color='gray', linestyle='--')
-    axins.set_xlim(0.9, 1.1)
-    axins.set_xticks([0.9, 1.0, 1.1])
+    axins.set_xlim(jump_loc-0.1, jump_loc+0.1)
+    axins.set_xticks([jump_loc-0.1, jump_loc, jump_loc+0.1])
+    
+    x_i_jumploc = int(np.where(x_i == jump_loc)[0][0])
+    y_i_jumpval = y_i[x_i_jumploc].item()
+    axins.set_ylim(y_i_jumpval-0.01,y_i_jumpval+0.01)
+    axins.set_yticks([y_i_jumpval-0.01,y_i_jumpval,y_i_jumpval+0.01])
+    axins.scatter(x_i, zeros+0.25, color="red", s = 14)
+    """
     if y0 == 0.8:
         axins.set_ylim(0.2925, 0.3125)# y0 = 0.8
         axins.set_yticks([0.2925, 0.3025, 0.3125])
@@ -917,7 +924,7 @@ def plot_solution(saveloc,save_name,save,show,x_i, y_hat, y_i, l2, n_width, n_or
         axins.set_ylim(0.4385, 0.4585)# y0 = 1.2
         axins.set_yticks([0.4385, 0.4485, 0.4585])
         axins.scatter(x_i, zeros+0.44, color="red", s = 14)
-
+    """
     #axins.set_xticklabels([])
     #axins.set_yticklabels([])
 
@@ -1043,64 +1050,116 @@ def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2,
     
     return x_all
 
-def main():
-    """Execute main routine."""
-    # Read all the parameters form the config file
-    # Model Parameters
-    n_width = parameters_ode.n_width
-    n_order = parameters_ode.n_order
-    n_samples = parameters_ode.n_samples
-    n_epochs = parameters_ode.n_epochs
-    spacing = parameters_ode.spacing
-    linearspacing = parameters_ode.linearspacing
-    
-    # ODE Settings
-    x_min = parameters_ode.x_min
-    x_max = parameters_ode.x_max
-    y0 = parameters_ode.y0
-    step_loc = parameters_ode.step_loc
-    step_loc_add = parameters_ode.step_loc_add
-    ndim_in = parameters_ode.ndim_in
-    k = parameters_ode.k
-    log_fct = parameters_ode.log_fct
-    
-    # Solving Methods
-    autodiff = parameters_ode.autodiff
-    
-    # Data Saving and Plot Options
-    save = parameters_ode.save
-    show = parameters_ode.show
-    enable_animation = parameters_ode.enable_animation
-    saveloc = parameters_ode.saveloc
-    anim_intvl = parameters_ode.animation_interval
-    
-    # How many different Parametrized versions 
-    Tot_runs = parameters_ode.Tot_runs
-    
-    # Calculate the number of elements
-    n_elements = int((n_samples - spacing) / n_order)
-        # Define if collocation points
+def model_evaluation(n_samples,linearspacing, x_min, x_max,y0,step_loc_sol, log_fct,k, model):
+    epoch_idx = 0
+    # Create Output
     if linearspacing:
         col_points = np.linspace(x_min, x_max, n_samples)
     else:
         col_points = compute_nonuniform_points()
-    
-    # Define the constant points
-    const_points = np.zeros(n_samples)
     # Calculate the exact solution of the ODE
-    f_x_exact = ode_hde(y0, col_points,step_loc)
-    y_i = f_x_exact
+    step_loc_sol
+    f_x_exact = ode_hde(y0, col_points,step_loc_sol)
+    y_i_sol = f_x_exact
     # Transform numpy arrays to torch tensors
     col_points = torch.from_numpy(col_points).requires_grad_(True)
-    const_points = torch.from_numpy(const_points).requires_grad_(True)
     x_i = col_points
+    heaviside_tensor = heaviside_fct(x_i, step_loc_sol)
+    # Create the Final Ouput of your Model
+    y_hatvec = torch.zeros_like(x_i)
+    dydy_hatvec = torch.zeros_like(x_i)
+    for sample in range(n_samples):
+        x = x_i[sample].unsqueeze(-1)
+        if log_fct:
+            j = 1/(1 + torch.exp(-k*(x - step_loc_sol)))
+        else:
+            j = heaviside_tensor[sample].unsqueeze(-1)
+        model_input = torch.cat([x, j], dim=0).unsqueeze(0)
+        y_hat = y0 + x * model(model_input,epoch_idx,sample)
+        dydy_hat= torch.autograd.grad(
+                    y_hat, x, torch.ones_like(x)
+                )[0]
+    
+        y_hatvec[sample] = y_hat
+        dydy_hatvec[sample] = dydy_hat
+        
+    # Adjust data so it can be saved to a csv file
+    y_hatvec = y_hatvec.detach()
+    dydy_hatvec = dydy_hatvec.detach()
+    return y_hatvec, dydy_hatvec , y_i_sol
+
+def main():
+    """Execute main routine."""
+    # Read all the parameters form the config file
+    # Model Parameters
+    n_width = parameters_ode_param.n_width
+    n_order = parameters_ode_param.n_order
+    n_samples = parameters_ode_param.n_samples
+    n_epochs = parameters_ode_param.n_epochs
+    spacing = parameters_ode_param.spacing
+    linearspacing = parameters_ode_param.linearspacing
+    
+    # ODE Settings
+    x_min = parameters_ode_param.x_min
+    x_max = parameters_ode_param.x_max
+    y0 = parameters_ode_param.y0
+    step_loc = parameters_ode_param.step_loc
+    step_loc_add = parameters_ode_param.step_loc_add
+    step_loc_sol = parameters_ode_param.step_loc_sol
+    ndim_in = parameters_ode_param.ndim_in
+    k = parameters_ode_param.k
+    log_fct = parameters_ode_param.log_fct
+    
+    # Solving Methods
+    autodiff = parameters_ode_param.autodiff
+    
+    # Data Saving and Plot Options
+    save = parameters_ode_param.save
+    show = parameters_ode_param.show
+    enable_animation = parameters_ode_param.enable_animation
+    saveloc = parameters_ode_param.saveloc
+    anim_intvl = parameters_ode_param.animation_interval
+    
+    # How many different Parametrized versions 
+    Tot_runs = parameters_ode_param.Tot_runs
+    
+    # Calculate the number of elements
+    n_elements = int((n_samples - spacing) / n_order)
+    
+    # Containers to save the solutions for the animation and the final plot, respectively [adjustment for higher ouput dim necessary]
+    solutions = np.zeros((n_samples,int(n_epochs*Tot_runs/anim_intvl)+1))
+    with torch.no_grad():
+        # Create Tensor which saves all model outputs, x_i and y_i
+        data = torch.zeros((n_samples,(n_epochs*Tot_runs)+(Tot_runs*2)+1+1))
+        # Create Tensor which saves all gradients calculated dydx and x_i
+        dataGrad = torch.zeros((n_samples,(n_epochs*Tot_runs)+1+1))
+    
     # Create big tensor for all the collocations points + parameters
     model_input_big = torch.zeros((n_samples*Tot_runs,ndim_in))
     for batch in range(Tot_runs):
+        # Define if collocation points (numpy vectors)
+        if linearspacing:
+            col_points = np.linspace(x_min, x_max, n_samples)
+        else:
+            col_points = compute_nonuniform_points()
+        
+        # Calculate the exact solution of the ODE
+        f_x_exact = ode_hde(y0, col_points,step_loc)
+        y_i = f_x_exact
+        y_i_torch = torch.from_numpy(y_i)
+        data[:,(batch+1)*2] = y_i_torch.view(-1).detach()
+        # Transform numpy arrays to torch tensors
+        col_points = torch.from_numpy(col_points).requires_grad_(True)
+        x_i = col_points
+        
+        data[:,0] = x_i.view(-1).detach()
+        dataGrad[:,0] = x_i.view(-1).detach()
+        
         model_input_big[n_samples*batch : n_samples*(batch+1), 0] = x_i.view(-1)
         # Create heaviside/logistic function for ODE HBC
         if not log_fct:
             heaviside_tensor = heaviside_fct(x_i, step_loc)
+            data[:,(batch*2+1)] = heaviside_tensor.view(-1).detach()
             model_input_big[n_samples*batch : n_samples*(batch+1), 1] = heaviside_tensor.view(-1)
         else:
             logistic_function = 1 / (1 + torch.exp(-k * (x_i - step_loc)))
@@ -1126,28 +1185,12 @@ def main():
         autodiff=autodiff,
     )
     
-    # Containers to save the solutions for the animation and the final plot, respectively [adjustment for higher ouput dim necessary]
-    solutions = np.zeros((n_samples,int(n_epochs/anim_intvl)+1))
-    with torch.no_grad():
-        # Create Tensor which saves all model outputs, x_i and y_i
-        data = torch.zeros((n_samples,(n_epochs*Tot_runs)+3))
-        data[:,0] = x_i.view(-1)
-        if log_fct:
-            data[:,1] = logistic_function.view(-1)
-        else: 
-            data[:,1] = heaviside_tensor.view(-1)
-        y_i_torch = torch.from_numpy(y_i)
-        data[:,2] = y_i_torch.view(-1)
-        
-        # Create Tensor which saves all gradients calculated dydx and x_i
-        dataGrad = torch.zeros((n_samples,(n_epochs*Tot_runs)+2))
-        dataGrad[:,0] = x_i.view(-1)
-    
     counter = 0 
     with tqdm.trange(n_epochs) as pbar1:
-        for _ in pbar1:
+        for epoch_idx in pbar1:
             loss_epoch = torch.zeros((n_samples,))
             for batch in range(Tot_runs):
+                #model_input_i = model_input_big[n_samples*batch : n_samples*(batch+1), :]
                 model_input_i = shuffled_vector[n_samples*batch : n_samples*(batch+1), :]
                 for sample in range(n_samples):    
                     loss = 0  
@@ -1155,11 +1198,11 @@ def main():
                     j = model_input_i[sample,1].unsqueeze(0)
                     if autodiff is True:
                         model_input = model_input_i[sample,:].unsqueeze(0)
-                        y = y0 + x*(model(model_input,_,sample))
+                        y = y0 + x*(model(model_input,epoch_idx,sample))
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
-                        residual = (dydx + y - model_input_i[sample,1].unsqueeze(0))
+                        residual = (dydx + y - j)
                     else:
                         with torch.no_grad():
                             raise SystemExit("Not implemented for hihger input dim")
@@ -1175,8 +1218,8 @@ def main():
 
                     # Fill data into tensors for saving [Must be changed, currently they only fill memory till forced shutdown]
                     with torch.no_grad():
-                        data[sample,(_*batch)+2] = y.view(-1)
-                        dataGrad[sample,(_*batch)+1] = dydx.view(-1)
+                        data[sample,(epoch_idx*Tot_runs+batch)+(Tot_runs*2)+1] = y.view(-1)
+                        dataGrad[sample,(epoch_idx*Tot_runs+batch)+1] = dydx.view(-1)
                     
                     loss = torch.mean(torch.square(residual))
                     #loss2 = torch.norm(residual)
@@ -1216,85 +1259,51 @@ def main():
 
                 del loss, dydx, residual
             
-            if enable_animation:
-                    if _ % anim_intvl == 0:
-                        with torch.no_grad():
-                            sampleeval = 0
-                            vec = torch.zeros(n_samples)
-                            if log_fct:
-                                j_vecc = logistic_function
-                            else:
-                                j_vecc = heaviside_tensor
-                            model_input = torch.stack([x_i, j_vecc], dim=1)
-                            for sampleeval in range(n_samples):
-                                x = x_i[sampleeval].unsqueeze(-1)
-                                model_input_i = model_input[sampleeval].unsqueeze(0)
-                                y_hat_intermediary = y0+x*model(model_input_i,_,sampleeval)
-                                vec[sampleeval] = y_hat_intermediary
-                            vec = vec.detach().numpy().reshape(-1,1)
-                            if _ == 0:
-                                solutions[:,counter] = vec[:,0].flatten()
-                            else:
-                                solutions[:,counter] = vec[:,0].flatten()
-                            counter += 1
+                if enable_animation:
+                        if epoch_idx % anim_intvl == 0:
+                            with torch.no_grad():
+                                sampleeval = 0
+                                vec = torch.zeros(n_samples)
+                                if log_fct:
+                                    j_vecc = logistic_function
+                                else:
+                                    j_vecc = heaviside_tensor
+                                model_input = torch.stack([x_i, j_vecc], dim=1)
+                                for sampleeval in range(n_samples):
+                                    x = x_i[sampleeval].unsqueeze(-1)
+                                    model_input_i = model_input[sampleeval].unsqueeze(0)
+                                    y_hat_intermediary = y0+x*model(model_input_i,epoch_idx,sampleeval)
+                                    vec[sampleeval] = y_hat_intermediary
+                                vec = vec.detach().numpy().reshape(-1,1)
+                                if epoch_idx == 0:
+                                    solutions[:,counter] = vec[:,0].flatten()
+                                else:
+                                    solutions[:,counter] = vec[:,0].flatten()
+                                counter += 1
     
     print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
     
+    y_hatvec, dydy_hatvec,y_i_sol = model_evaluation(n_samples,linearspacing, x_min, x_max,y0,step_loc_sol, log_fct,k, model)
     
-    if linearspacing:
-        col_points = np.linspace(x_min, x_max, n_samples)
-    else:
-        col_points = compute_nonuniform_points()
-    # Calculate the exact solution of the ODE
-    step_loc = 1.0
-    f_x_exact = ode_hde(y0, col_points,step_loc)
-    y_i = f_x_exact
-    # Transform numpy arrays to torch tensors
-    col_points = torch.from_numpy(col_points).requires_grad_(True)
-    x_i = col_points
-    heaviside_tensor = heaviside_fct(x_i, step_loc)
-    # Create the Final Ouput of your Model
-    y_hatvec = torch.zeros_like(x_i)
-    dydy_hatvec = torch.zeros_like(x_i)
-    for sample in range(n_samples):
-        x = x_i[sample].unsqueeze(-1)
-        if log_fct:
-            j = 1/(1 + torch.exp(-k*(x - step_loc)))
-        else:
-            j = heaviside_tensor[sample].unsqueeze(-1)
-        model_input = torch.cat([x, j], dim=0).unsqueeze(0)
-        y_hat = y0 + x * model(model_input,_,sample)
-        dydy_hat= torch.autograd.grad(
-                    y_hat, x, torch.ones_like(x)
-                )[0]
-    
-        y_hatvec[sample] = y_hat
-        dydy_hatvec[sample] = dydy_hat
-    
-    # Adjust data so it can be saved to a csv file
-    y_hatvec = y_hatvec.detach()
-    dydy_hatvec = dydy_hatvec.detach()
-    
-    data[:,n_epochs*Tot_runs+2] = y_hatvec
-    dataGrad[:,n_epochs*Tot_runs+1] = dydy_hatvec
+    data[:,(n_epochs*Tot_runs)+(Tot_runs*2)+1] = y_hatvec
+    dataGrad[:,(n_epochs*Tot_runs)+1] = dydy_hatvec
     
     y_hatvec = y_hatvec.view(-1,1).numpy()
     dydy_hatvec = dydy_hatvec.view(-1,1).numpy()
-    l2 = np.linalg.norm(y_i - y_hatvec)
+    l2 = np.linalg.norm(y_i_sol - y_hatvec)
     print(f"L2-error: {l2.item():0.4e}")
     solutions[:,counter] = y_hatvec[:,0]
     
-    # Define Name of the saved files
     if log_fct:
-        save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc}log{k}"
+        save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc_sol}log{k}"
         log_name = f"log{k}"
     else:
-        save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc}h"
+        save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc_sol}h"
         log_name = "H"
 
     if enable_animation:
-        create_animation(saveloc,save_name,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing,anim_intvl,step_loc,log_name)
-    plot_solution(saveloc,save_name,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str, step_loc,log_name)
+        create_animation(saveloc,save_name,save,show,solutions, x_i, y_i_sol,n_width, n_order, n_samples,n_epochs,y0,spacing,anim_intvl,step_loc_sol,log_name)
+    plot_solution(saveloc,save_name,save,show,x_i,y_hatvec, y_i_sol, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str, step_loc_sol,log_name)
     plt.close('all')
     
     data = data.detach().numpy()
