@@ -25,13 +25,4 @@ if False:
     plt.scatter(np.logspace(0, np.log10(5), num=11, base=10), np.zeros(11)+0.02, color='green')
     plt.grid()
     plt.show()
-vector = np.zeros(10)
-index = 0
-tot_runs = 2
 
-for i in range(2):
-    for j in range(5):
-        vector[index] = 1
-        index += 1
-
-print(vector)
