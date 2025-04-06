@@ -3,6 +3,7 @@
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.init as init
+import torch.nn as nn
 import tqdm
 import parameters_phasefield as param
 import pandas as pd
@@ -584,7 +585,8 @@ def main():
         raise SystemExit("\nNo valid AT model selected\n")
     
     # Calculate constant penalty value gamma
-    gamma = (Gc / l) * ((1.0 /(TOL_irr**2.0)) - 1.0)
+    #gamma = (Gc / l) * ((1.0 /(TOL_irr**2.0)) - 1.0)
+    gamma = (27/(64*TOL_irr**2))
     L = abs(x_max - x_min)
     # Create the collocation points
     x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_()
@@ -610,7 +612,7 @@ def main():
     )
     alpha_prev = torch.zeros_like(x_i)
     # Currently only using a singular loading step for the problem fixed at a small value
-    Ut = 0.01
+    Ut = 0.0
     
     #raise SystemExit("\nNothing Implemented yet that would work\n")
 
@@ -623,63 +625,69 @@ def main():
                 
                 # Calculate the model prediction for the displacement u with HBC   
                 u = ((x * (x-L) * model_u(x)) + x) * Ut/L
-                
-                # Calculate the model prediction for the phase field alpha with HBC
+                #u = ((x+0.5)*(x-0.5)*model_u(x) + (x+0.5))*Ut/L
+
                 alpha = x*(x-L)*model_alpha(x)
+                #alpha = (x+0.5)*(x-0.5)*model_alpha(x)
                 
-                # Caculate all the necessary gradient values for the phase field du/dx, dalpha/dx and d2alpha/dx2
-                dudx = torch.autograd.grad(
-                    u , x, torch.ones_like(x), create_graph=True, materialize_grads=True
-                )[0]
-            
-                dalphadx = torch.autograd.grad(
-                    alpha , x, torch.ones_like(x), create_graph=True, materialize_grads=True
-                )[0]
+                # compute the derivatives
+                #dudx = torch.autograd.grad(u.sum(), x, create_graph=True)[0]
+                dudx = torch.autograd.grad(u, x, grad_outputs=torch.ones_like(u), create_graph=True)[0]
+                #dalphadx = torch.autograd.grad(alpha.sum(), x,  create_graph=True)[0]
+                dalphadx = torch.autograd.grad(alpha, x, grad_outputs=torch.ones_like(alpha), create_graph=True)[0]
+                #d2alphad2x = torch.autograd.grad(dalphadx.sum(), x,  create_graph=True)[0]
+                d2alphad2x = torch.autograd.grad(dalphadx, x, grad_outputs=torch.ones_like(dalphadx), create_graph=True)[0]
+        
+                equilibrium_eq_in = ((1-alpha) ** 2) * mat_E * (dudx)
+                equilibrium_eq = torch.autograd.grad(equilibrium_eq_in.sum(), x, create_graph=True)[0]
+
+                damage_crit_eq = (-2 *(1-alpha) * mat_E * ((dudx) ** 2) ) + ((Gc/cw) * ((1.0 /l) - 2 * l * (d2alphad2x)))
+
+                dAlpha = alpha - torch.zeros_like(alpha)
+                hist_penalty = nn.ReLU()(-dAlpha) 
+                E_hist_penalty = 0.5 * gamma * (hist_penalty**2)
                 
-                d2alphadx2 = torch.autograd.grad(
-                    dalphadx , x, torch.ones_like(x), create_graph=True, materialize_grads=True
-                )[0]
+                l2_reg_w1 = 0.0
+                for param_u in model_u.parameters():
+                    l2_reg_w1 += torch.sum(param_u**2)
+                l2_reg_w2 = 0.0
+                for param_alpha in model_alpha.parameters():
+                    l2_reg_w2 += torch.sum(param_alpha**2)
                 
-                # Equilibrium equation for the phase field model
-                eq_inside = ((1-alpha)**2) * mat_E * dudx
-                res_eq= torch.autograd.grad(
-                    eq_inside , x, torch.ones_like(x), create_graph=True, materialize_grads=True
-                )[0]
+                res_tot = equilibrium_eq + damage_crit_eq + E_hist_penalty #+ (1e-3 *l2_reg_w1) + (1e-3 *l2_reg_w2)
                 
-                # Damage critirion
-                res_dmg = -2*(1-alpha) * mat_E * (dudx**2) + (Gc/cw) *((dwdalpha/l) - 2*l*(d2alphadx2))
+                loss1 = torch.mean(equilibrium_eq**2)
+                loss2 = torch.mean(damage_crit_eq**2)
+                loss3 = torch.mean(E_hist_penalty**2)
+                loss_tot =  loss1 + loss2 + loss3 #+ (1e-5 *l2_reg_w1) + (1e-3 *l2_reg_w2)
+                #loss_tot = torch.mean((equilibrium_eq+ damage_crit_eq+E_hist_penalty)**2)
+                # Weight regularization: L2 penalty over all parameters
                 
-                # Irreversibility condition, should not have an influence if we just calculate for 1 loading step
-                alpha_prev_i = alpha_prev[sample].unsqueeze(-1)
-                delta_alpha = alpha - alpha_prev_i
-                penalty_term = gamma/2 * torch.minimum(torch.zeros_like(delta_alpha), delta_alpha)
-                
-                res_tot = res_eq + res_dmg + penalty_term
-                #res_tot = res_dmg + penalty_term
-                
-                loss = torch.mean(torch.square(res_eq)) + torch.mean(torch.square(res_dmg)) + torch.mean(torch.square(penalty_term))
-                #loss = torch.mean(torch.square(res_dmg)) + torch.mean(torch.square(penalty_term))
+                loss = loss_tot
+                # calculate the gradients for the model paramters Big Question is still what residual do we use for the gradients
                 g_lst_u = torch.autograd.grad(
-                    outputs=res_eq,
+                    outputs=res_tot,
                     inputs=model_u.parameters(),
-                    create_graph=True, retain_graph=True
+                    retain_graph=True,
                 )
                 
                 g_lst_alpha = torch.autograd.grad(
-                    outputs=res_dmg,
+                    outputs=res_tot,
                     inputs=model_alpha.parameters(),
-                    create_graph=True, retain_graph=True
                 )
-                norm_u = torch.linalg.norm(torch.hstack(g_lst_u)) ** 2
-                norm_alpha = torch.linalg.norm(torch.hstack(g_lst_alpha)) ** 2
+                norm_u = (torch.linalg.norm(torch.hstack(g_lst_u))) ** 2
+                norm_alpha = (torch.linalg.norm(torch.hstack(g_lst_alpha))) ** 2
+                norm_u += 1e-16
+                norm_alpha += 1e-16
                 
+                lr = 1.0
                 # Kaczmarz update
-                for p, g in zip(model_u.parameters(), g_lst_u):
-                    update = (res_eq / norm_u) * torch.squeeze(g)
-                    p.data -= update
-                for p, g in zip(model_alpha.parameters(), g_lst_alpha):
-                    update = (res_dmg / norm_alpha) * torch.squeeze(g)
-                    p.data -= update
+                for p_u, g_u in zip(model_u.parameters(), g_lst_u):
+                    update = lr *(res_tot / norm_u) * torch.squeeze(g_u)
+                    p_u.data -= update
+                for p_alpha, g_alpha in zip(model_alpha.parameters(), g_lst_alpha):
+                    update = lr *(res_tot / norm_alpha) * torch.squeeze(g_alpha)
+                    p_alpha.data -= update
 
                 loss_epoch[sample] = loss
 
@@ -687,8 +695,6 @@ def main():
             loss_str = f"{loss_mean.item():0.4e}"
 
             pbar1.set_postfix(loss=loss_str)
-
-            #del loss, dudx, dalphadx, d2alphadx2, res_eq, res_dmg, res_tot, g_lst_u, g_lst_alpha, norm_u, norm_alpha
             """
             if enable_animation:
                     if epoch_idx % anim_intvl == 0:
@@ -721,15 +727,22 @@ def main():
         u_hat[sample] = ((x * (x-L) * model_u(x)) + x) * Ut/L
         alpha_hat[sample] = x*(x-L)*model_alpha(x)
     
-    plt.figure(0,figsize=(12,7))
-    plt.plot(x_i.detach().numpy(), u_hat.detach().numpy(), label="Displacement", color="black", alpha=0.75, linewidth=2)
-    plt.grid(True)
-    plt.show()
-    plt.figure(1,figsize=(12,7))
-    plt.plot(x_i.detach().numpy(), alpha_hat.detach().numpy(), label="Phase field", color="black", alpha=0.75, linewidth=2)
-    plt.grid(True)
-    plt.show()
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4))
+    axs[0].plot(x_i.detach().numpy(), u_hat.detach().numpy(), label="u")
+    axs[0].set_xlabel("x")
+    axs[0].set_ylabel("u")
+    axs[0].set_title("Displacement")
+    axs[0].set_ylim(-0.1, 1.1)
+    axs[0].grid()
     
+    axs[1].plot(x_i.detach().numpy(), alpha_hat.detach().numpy(), label="alpha")
+    axs[1].set_xlabel("x")
+    axs[1].set_ylabel("alpha")
+    axs[1].set_title("Phase Field")
+    axs[1].grid()
+    axs[1].set_ylim(-0.1, 1.1)
+    plt.tight_layout()
+    plt.show()
     return None
 
 if __name__ == "__main__":
