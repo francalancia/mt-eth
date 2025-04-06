@@ -47,7 +47,7 @@ class LagrKANNautoinner(torch.nn.Module):
         self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
 
         # Apply Xavier initialization (uniform)
-        init.xavier_uniform_(self.weight)
+        init.xavier_normal_(self.weight)
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -200,7 +200,7 @@ class LagrKANNautoouter(torch.nn.Module):
         self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
 
         # Apply Xavier initialization (uniform)
-        init.xavier_uniform_(self.weight)
+        init.xavier_normal_(self.weight)
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
         nodes = torch.linspace(-1.0, 1.0, n_order + 1)

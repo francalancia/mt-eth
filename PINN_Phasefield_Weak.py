@@ -125,10 +125,10 @@ def main():
     """
     #optimiser = torch.optim.LBFGS(pinn.parameters(), lr = 1e-4)
     optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-8, step_sizes=(1e-10, 50))
-    U_p = 0.65
+    U_p = 0.0
     l = 0.05
     cw = 8.0/3.0
-    weight_decay = 1e-5
+    weight_decay = 5e-5
     tol_ir = 5e-3
     penalty = (27/(64*tol_ir**2))
     
