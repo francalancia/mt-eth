@@ -13,7 +13,7 @@ from scipy.integrate import odeint
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 import datetime
-torch.manual_seed(42)
+torch.manual_seed(432)
 # set the default data type for tensors to double precision
 torch.set_default_dtype(torch.float64)
 # set the default plotting sizes
@@ -41,13 +41,13 @@ class LagrKANNautoinner(torch.nn.Module):
         self.x_max = x_max
 
         #self.weight = torch.nn.parameter.Parameter(
-        #    torch.zeros((self.n_width, self.n_nodes))
+        #    torch.ones((self.n_width, self.n_nodes))
         #)
         # Define weight as a parameter
         self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
 
         # Apply Xavier initialization (uniform)
-        init.xavier_normal_(self.weight)
+        init.xavier_normal_(self.weight, gain=1.0)
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -194,13 +194,13 @@ class LagrKANNautoouter(torch.nn.Module):
         self.x_max = x_max
 
         #self.weight = torch.nn.parameter.Parameter(
-        #    torch.zeros((self.n_width, self.n_nodes))
+        #    torch.ones((self.n_width, self.n_nodes))
         #)
         # Define weight as a parameter
         self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
 
         # Apply Xavier initialization (uniform)
-        init.xavier_normal_(self.weight)
+        init.xavier_normal_(self.weight, gain=1.0)
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
         nodes = torch.linspace(-1.0, 1.0, n_order + 1)
@@ -612,87 +612,62 @@ def main():
     )
     alpha_prev = torch.zeros_like(x_i)
     # Currently only using a singular loading step for the problem fixed at a small value
-    Ut = 0.0
+    Ut = 0.60
     
     #raise SystemExit("\nNothing Implemented yet that would work\n")
+    optimizer = torch.optim.Rprop(list(model_u.parameters()) + list(model_alpha.parameters()), lr=1e-2, step_sizes=(1e-10, 50))
 
-    with tqdm.trange(n_epochs) as pbar1:
-        for epoch_idx in pbar1:
-            loss_epoch = torch.zeros((n_samples,))
-            for sample in range(n_samples): 
+    #optimizer = torch.optim.LBFGS(
+    #    list(model_u.parameters()) + list(model_alpha.parameters()), lr = 1e-4
+    #    )
+    def closure():
+        optimizer.zero_grad()
+        u_hat = []
+        alpha_hat = []
+        for sample in range(n_samples):
                 # Get the collocation point 
                 x = x_i[sample].unsqueeze(-1)
+                # Calculate the model prediction for the displacement u and alpha with HBC   
+                u = ((x + 0.5)*(x - 0.5)*model_u(x) + (x + 0.5)) * Ut
+                alpha = (x + 0.5) * (x - 0.5) * model_alpha(x)
+                u_hat.append(u)
+                alpha_hat.append(alpha)
                 
-                # Calculate the model prediction for the displacement u with HBC   
-                u = ((x * (x-L) * model_u(x)) + x) * Ut/L
-                #u = ((x+0.5)*(x-0.5)*model_u(x) + (x+0.5))*Ut/L
-
-                alpha = x*(x-L)*model_alpha(x)
-                #alpha = (x+0.5)*(x-0.5)*model_alpha(x)
-                
-                # compute the derivatives
-                #dudx = torch.autograd.grad(u.sum(), x, create_graph=True)[0]
-                dudx = torch.autograd.grad(u, x, grad_outputs=torch.ones_like(u), create_graph=True)[0]
-                #dalphadx = torch.autograd.grad(alpha.sum(), x,  create_graph=True)[0]
-                dalphadx = torch.autograd.grad(alpha, x, grad_outputs=torch.ones_like(alpha), create_graph=True)[0]
-                #d2alphad2x = torch.autograd.grad(dalphadx.sum(), x,  create_graph=True)[0]
-                d2alphad2x = torch.autograd.grad(dalphadx, x, grad_outputs=torch.ones_like(dalphadx), create_graph=True)[0]
+        u_hat = torch.stack(u_hat)
+        alpha_hat = torch.stack(alpha_hat)    
+        # compute the derivatives
+        dudx = torch.autograd.grad(u_hat.sum(), x_i, create_graph=True)[0]
+        dalphadx = torch.autograd.grad(alpha_hat.sum(), x_i,  create_graph=True)[0]
         
-                equilibrium_eq_in = ((1-alpha) ** 2) * mat_E * (dudx)
-                equilibrium_eq = torch.autograd.grad(equilibrium_eq_in.sum(), x, create_graph=True)[0]
+        #compute energies
+        energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
+        energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2)) 
 
-                damage_crit_eq = (-2 *(1-alpha) * mat_E * ((dudx) ** 2) ) + ((Gc/cw) * ((1.0 /l) - 2 * l * (d2alphad2x)))
+        dAlpha = alpha_hat - torch.zeros_like(alpha_hat)
+        hist_penalty = nn.ReLU()(-dAlpha) 
+        E_hist_penalty = 0.5 * gamma * (hist_penalty**2) 
+    
+        energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
+        
+        loss_energy = torch.log10(energy_tot)
+        # Weight regularization: L2 penalty over all parameters
+        l2u_reg = 0.0
+        for paramu in model_u.parameters():
+            l2u_reg += torch.sum(paramu ** 2)
+        l2a_reg = 0.0
+        for parama in model_alpha.parameters():
+            l2a_reg += torch.sum(parama ** 2)
+    
+        loss = loss_energy + l2u_reg * 1e-5 + l2a_reg* 1e-5
+        loss.backward()
+        return loss
+    
+    with tqdm.trange(n_epochs) as pbar1:
+        for epoch_idx in pbar1:
+            loss = optimizer.step(closure)
 
-                dAlpha = alpha - torch.zeros_like(alpha)
-                hist_penalty = nn.ReLU()(-dAlpha) 
-                E_hist_penalty = 0.5 * gamma * (hist_penalty**2)
-                
-                l2_reg_w1 = 0.0
-                for param_u in model_u.parameters():
-                    l2_reg_w1 += torch.sum(param_u**2)
-                l2_reg_w2 = 0.0
-                for param_alpha in model_alpha.parameters():
-                    l2_reg_w2 += torch.sum(param_alpha**2)
-                
-                res_tot = equilibrium_eq + damage_crit_eq + E_hist_penalty #+ (1e-3 *l2_reg_w1) + (1e-3 *l2_reg_w2)
-                
-                loss1 = torch.mean(equilibrium_eq**2)
-                loss2 = torch.mean(damage_crit_eq**2)
-                loss3 = torch.mean(E_hist_penalty**2)
-                loss_tot =  loss1 + loss2 + loss3 #+ (1e-5 *l2_reg_w1) + (1e-3 *l2_reg_w2)
-                #loss_tot = torch.mean((equilibrium_eq+ damage_crit_eq+E_hist_penalty)**2)
-                # Weight regularization: L2 penalty over all parameters
-                
-                loss = loss_tot
-                # calculate the gradients for the model paramters Big Question is still what residual do we use for the gradients
-                g_lst_u = torch.autograd.grad(
-                    outputs=res_tot,
-                    inputs=model_u.parameters(),
-                    retain_graph=True,
-                )
-                
-                g_lst_alpha = torch.autograd.grad(
-                    outputs=res_tot,
-                    inputs=model_alpha.parameters(),
-                )
-                norm_u = (torch.linalg.norm(torch.hstack(g_lst_u))) ** 2
-                norm_alpha = (torch.linalg.norm(torch.hstack(g_lst_alpha))) ** 2
-                norm_u += 1e-16
-                norm_alpha += 1e-16
-                
-                lr = 1.0
-                # Kaczmarz update
-                for p_u, g_u in zip(model_u.parameters(), g_lst_u):
-                    update = lr *(res_tot / norm_u) * torch.squeeze(g_u)
-                    p_u.data -= update
-                for p_alpha, g_alpha in zip(model_alpha.parameters(), g_lst_alpha):
-                    update = lr *(res_tot / norm_alpha) * torch.squeeze(g_alpha)
-                    p_alpha.data -= update
-
-                loss_epoch[sample] = loss
-
-            loss_mean = torch.mean(loss_epoch)
-            loss_str = f"{loss_mean.item():0.4e}"
+            #loss_mean = torch.mean(loss_epoch)
+            loss_str = f"{loss.item():0.4e}"
 
             pbar1.set_postfix(loss=loss_str)
             """
@@ -719,13 +694,24 @@ def main():
             """
     
     print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
-    
-    u_hat = torch.zeros_like(x_i)
-    alpha_hat = torch.zeros_like(x_i)
+    #model_u.eval()
+    #model_alpha.eval()
+    x_hat = torch.linspace(x_min, x_max, n_samples, requires_grad=True)
+    u_hat = torch.zeros_like(x_hat)
+    alpha_hat = torch.zeros_like(x_hat)
     for sample in range(n_samples):
-        x = x_i[sample].unsqueeze(-1)
-        u_hat[sample] = ((x * (x-L) * model_u(x)) + x) * Ut/L
-        alpha_hat[sample] = x*(x-L)*model_alpha(x)
+        x = x_hat[sample].unsqueeze(-1)
+        u_hati = ((x + 0.5)*(x - 0.5)*model_u(x) + (x + 0.5))*Ut
+        alpha_hati = (x + 0.5)*(x - 0.5)*model_alpha(x)
+        u_hat[sample] = u_hati
+        alpha_hat[sample]  = alpha_hati
+    # compute the derivatives
+    dudx = torch.autograd.grad(u_hat.sum(), x_hat, create_graph=True)[0]
+    dalphadx = torch.autograd.grad(alpha_hat.sum(), x_hat,  create_graph=True)[0]
+    
+    #compute energies
+    energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
+    energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2))
     
     fig, axs = plt.subplots(1, 2, figsize=(10, 4))
     axs[0].plot(x_i.detach().numpy(), u_hat.detach().numpy(), label="u")
@@ -743,6 +729,25 @@ def main():
     axs[1].set_ylim(-0.1, 1.1)
     plt.tight_layout()
     plt.show()
+    x_np = x.detach().cpu().numpy()
+    u_np = u_hat.detach().cpu().numpy()
+    alpha_np = alpha_hat.detach().cpu().numpy()
+    e_el_np = energy_elastic.detach().cpu().numpy()
+    e_dam_np = energy_damage.detach().cpu().numpy()
+
+    # Use f-strings to incorporate 'my_var' into the filenames
+    npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\KANNoutputphasefieldweak_UP{Ut}.npz"
+    csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\KANNoutputphasefieldweak_UP{Ut}.csv"
+
+    # Save to NPZ
+    np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
+
+    # Optionally also save as CSV
+    data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
+    np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha", comments="")
+
+    print(f"Saved NPZ to: {npz_path}")
+    print(f"Saved CSV to: {csv_path}")
     return None
 
 if __name__ == "__main__":

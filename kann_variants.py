@@ -1264,11 +1264,26 @@ def main():
     y_hat2 = y_hat.detach().numpy().reshape(-1,1)
     solutions = np.hstack([solutions, y_hat2])
     l2 = l2.detach().numpy()
-    create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
+    #create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
     plot_solution(save,x_i, y_hat, y_i, l2)
     if False:
         save_excel(values, autodiff, regression, speedup, prestop)
         save_excel(loss_tracking, autodiff, regression, speedup, prestop)
+    
+    x_np = x_i.detach().numpy()
+    y_np = y_hat.detach().numpy()
+    n_width_np = np.full(x_np.shape, n_width)
+    n_order_np = np.full(x_np.shape, n_order)
+    n_samples_np = np.full(x_np.shape, n_samples)
+    n_epochs_np = np.full(x_np.shape, n_epochs)
+    
+    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_A{autodiff}_S{speedup}_l2_{l2}.npz"
+    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_A{autodiff}_S{speedup}_l2_{l2}.csv"
+    
+    data_to_save = np.hstack([x_np, y_np, n_width_np, n_order_np, n_epochs_np, n_samples_np])
+    np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np)
+    np.savetxt(csv_path, data_to_save, delimiter=",", header="x,y,width, order, epochs,samples", comments="")
+
     
     return None
 

@@ -192,6 +192,7 @@ class FCN(nn.Module):
         self.apply(self._init_weights)
         total_params = sum(p.numel() for p in self.parameters())
         print(f"Total number of parameters: {total_params}")
+        
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.xavier_uniform_(m.weight)
@@ -228,14 +229,15 @@ def collocationpoints(total_values):
     return combined
 def main():
     learning = False
-    save = True
+    save = False
     show = True
+    heaviside_bool = True
     # define neural network to train
     n_input = 1
     n_output = 1
     n_hidden = 32
     n_layers = 2
-    n_epochs = 1500
+    n_epochs = 100
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
@@ -270,15 +272,12 @@ def main():
         plt.show()
     col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
     with torch.no_grad():
-        heavyside = heaviside(col_points)
-        jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
-        plt.figure(figsize=(10, 5))
-        plt.plot(col_points, jump, label="Jump function", color="blue", alpha=1.0, linewidth=2)
-        plt.plot(col_points, heavyside, label="Heaviside function", color="red", alpha=1.0, linewidth=2)
-        plt.grid()
-        plt.show()
+        if heaviside_bool:
+            heavyside = heaviside(col_points)
+        else:
+            jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
     
-    solutions = []
+    #solutions = []
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
     
@@ -328,23 +327,56 @@ def main():
                 
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
                 """
-                if _ % 10 == 0:
-                    with torch.no_grad():
-                        f_x = pinn(col_points)
-                        solutions.append(f_x.detach().numpy())
+                #if _ % 10 == 0:
+                #    with torch.no_grad():
+                #        f_x = pinn(col_points)
+                #        solutions.append(f_x.detach().numpy())
                 
                 #optimiser.step()
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
     pinn.eval()
     with torch.no_grad():
         f_x = pinn(col_points)
-        solutions.append(f_x.detach().numpy())
-
+        #solutions.append(f_x.detach().numpy())
+    f_x_np = f_x.detach().numpy()
     
-    create_animation(save, show,solutions, col_points, f_x_exact)
+    l2_error = np.linalg.norm(f_x_exact - f_x_np)
+    # Plotting the analytical and PINN solution
+    fig = plt.figure(figsize=(10, 5))
+    plt.plot(col_points.detach().numpy(), f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+    plt.plot(col_points.detach().numpy(), f_x_np, linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+    plt.title(f"L2 error: {l2_error:.4e}")
+    plt.xlabel("x")
+    plt.ylabel("f(x)")
+    plt.grid(True)
+    plt.show()
+    
+    x_np = col_points.detach().numpy()
+    n_hidden_np = np.full(x_np.shape, n_hidden)
+    n_layers_np = np.full(x_np.shape, n_layers)
+    n_epochs_np = np.full(x_np.shape, n_epochs)
+    k_np = np.full(x_np.shape, k)
+    tot_val_np = np.full(x_np.shape, tot_val)
+    
+    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP{heaviside_bool}_l2{l2_error}.npz"
+    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP{heaviside_bool}_l2{l2_error}.csv"
+    
+    if heaviside_bool:
+        data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, tot_val_np])
+        np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, tot_val=tot_val_np)
+        np.savetxt(csv_path, data_to_save, delimiter=",", header="x,fx,n_h,n_l,n_e,tot_val", comments="")
+    else:
+        data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, k_np, tot_val_np])
+        np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, k =k_np, tot_val=tot_val_np)
+        np.savetxt(csv_path, data_to_save, delimiter=",", header="x,fx,n_h,n_l,n_e,k,tot_val", comments="")
 
-    l2 = plot_solution(save,show,pinn, col_points, f_x_exact, n_epochs)
-    print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
+    print(f"Saved NPZ to: {npz_path}")
+    print(f"Saved CSV to: {csv_path}")
+
+    #create_animation(save, show,solutions, col_points, f_x_exact)
+
+    #l2 = plot_solution(save,show,pinn, col_points, f_x_exact, n_epochs)
+    #print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
     if False:
         x_values = np.linspace(0, 1, 4001)
         y_values = np.vectorize(f)(x_values)
@@ -357,7 +389,7 @@ def main():
         plt.legend()
         plt.savefig('ODE2_HBCanalytical.png')
         plt.show()
-    if save:
+    if False:
         with open(f"E:/ETH/Master/25HS_MA/Data_ODE2/hyperparam_{timestamp}.txt","w") as file:
             file.write(f"Hidden neurons: {n_hidden}")
             file.write(f"Hidden layers: {n_layers}")

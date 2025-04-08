@@ -776,7 +776,7 @@ def ode_hde(y0,x):
     
     return y_heaviside
 def heaviside_fct(x):
-    tensor = torch.where(x >= 2.0, torch.ones_like(x), torch.zeros_like(x))
+    tensor = torch.where(x >= 1.0, torch.ones_like(x), torch.zeros_like(x))
     return tensor
 def preprocess_data(x,n_order,n_elements,x_min,x_max):
     n_nodes = n_elements * n_order + 1

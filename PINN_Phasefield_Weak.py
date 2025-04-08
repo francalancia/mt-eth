@@ -91,11 +91,11 @@ def main():
     n_output = 2
     n_hidden = 50
     n_layers = 4
-    n_epochs = 2000
+    n_epochs = 3000
     n_samples = 50
     x = torch.linspace(-0.5, 0.5, n_samples).reshape(-1, 1).requires_grad_()
     #x = torch.linspace(0, 1.0, n_samples).reshape(-1, 1).requires_grad_()
-    U_p = 1.0
+    U_p = 0.6
     
     for i in range(1):
         #pinn = FCN(n_input, n_output, n_hidden, n_layers)
@@ -130,7 +130,7 @@ def main():
 
         l = 0.05
         cw = 8.0/3.0
-        weight_decay = 5e-5
+        weight_decay = 1e-5
         tol_ir = 5e-3
         penalty = (27/(64*tol_ir**2))
         
@@ -229,8 +229,8 @@ def main():
         axs[2].legend()
         print(f"Elastic Energy: {e_el.item()}")
         print(f"Damage Energy: {e_dam.item()}")
-        #plt.tight_layout()
-        #plt.show()
+        plt.tight_layout()
+        plt.show()
         
         x_np = x.detach().cpu().numpy()
         u_np = u.detach().cpu().numpy()
@@ -239,8 +239,8 @@ def main():
         e_dam_np = energy_damage.detach().cpu().numpy()
 
         # Use f-strings to incorporate 'my_var' into the filenames
-        npz_path = fr"C:\Users\3399n\Documents\ETH\MasterThesis\Data_phase\outputphasefieldweak_UP{U_p}.npz"
-        csv_path = fr"C:\Users\3399n\Documents\ETH\MasterThesis\Data_phase\outputphasefieldweak_UP{U_p}.csv"
+        npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldweak_UP{U_p}.npz"
+        csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldweak_UP{U_p}.csv"
 
         # Save to NPZ
         np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
@@ -251,7 +251,7 @@ def main():
 
         print(f"Saved NPZ to: {npz_path}")
         print(f"Saved CSV to: {csv_path}")
-        U_p += 0.05
+        U_p = U_p + 0.01
     return None
 
 

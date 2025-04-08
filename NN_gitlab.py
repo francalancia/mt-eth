@@ -99,9 +99,9 @@ def init_xavier(model):
         if type(m) == nn.Linear and m.weight.requires_grad and m.bias.requires_grad:
             if activation == 'TrainableReLU' or activation == 'SteepReLU':
                 g = nn.init.calculate_gain('leaky_relu', np.sqrt(init_coeff**2-1.0))
-                #torch.nn.init.xavier_uniform_(m.weight, gain=g)
+                torch.nn.init.xavier_uniform_(m.weight, gain=g)
                 #torch.nn.init.zeros_(m.weight)
-                torch.nn.init.xavier_normal_(m.weight, gain=g)
+                #torch.nn.init.xavier_normal_(m.weight, gain=g)
                 m.bias.data.fill_(0)
 
             if activation == 'TrainableTanh' or activation == 'SteepTanh':

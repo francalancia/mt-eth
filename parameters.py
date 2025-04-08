@@ -1,9 +1,9 @@
 n_width = 1
 n_order = 1
-n_samples = 51
-n_epochs = 4000
+n_samples = 11
+n_epochs = 100
 tol = 1e-26
-autodiff = True
+autodiff = False
 regression = False
 speedup = True
 prestop = False
