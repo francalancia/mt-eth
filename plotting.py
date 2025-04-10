@@ -89,10 +89,12 @@ def load_and_plot_multiple_files(pattern):
         plt.tight_layout()
     
     if True:
-        Up = [0.0, 0.2, 0.4, 0.6, 0.65]
+        #Up = [0.0, 0.125,0.25,0.375,0.5]
+        wd = [1e-5, 1e-8, 0]
         fig, axs = plt.subplots(1, 2, figsize=(12, 5))
         for i in range(u_list.shape[1]):
-            axs[0].plot(x, u_list[:, i], label=f"u (Up = {Up[i]})")
+            #axs[0].plot(x, u_list[:, i], label=f"u (Up = {Up[i]})")
+            axs[0].plot(x, u_list[:, i], label=f"u (Wd = {wd[i]})")
         axs[0].set_xlabel("x")
         axs[0].set_ylabel("u")
         axs[0].set_title("Displacement")
@@ -100,7 +102,7 @@ def load_and_plot_multiple_files(pattern):
         axs[0].grid()
         axs[0].legend()
         for i in range(alpha_list.shape[1]):
-            axs[1].plot(x, alpha_list[:, i], label=f"alpha (Up = {Up[i]})")
+            axs[1].plot(x, alpha_list[:, i], label=f"alpha (Wd = {wd[i]})")
         axs[1].set_xlabel("x")
         axs[1].set_ylabel("alpha")
         axs[1].set_title("Phase Field")
@@ -111,7 +113,7 @@ def load_and_plot_multiple_files(pattern):
     plt.tight_layout()
     #plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_PhasefieldEnergy_weak.png", dpi=300)
     #plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Phasefield_weak.png", dpi=300)
-    plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Phasefield_Strong.png", dpi=300)
+    plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Phasefield_Strongwd.png", dpi=300)
     
     
     
@@ -121,7 +123,7 @@ def load_and_plot_multiple_files(pattern):
 if __name__ == "__main__":
     # Update this pattern to match the location and file naming you use
     #pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_weak_energy\outputphasefieldweak_UP*.npz"
-    pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_weak_displacement\outputphasefieldweak_UP*.npz"
+    #pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_weak_displacement\outputphasefieldweak_UP*.npz"
     pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Strong_displacement\outputphasefieldstrong_UP*.npz"
 
     # Load files and make plots

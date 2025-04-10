@@ -89,13 +89,13 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 2
-    n_hidden = 50
+    n_hidden = 15
     n_layers = 4
-    n_epochs = 3000
+    n_epochs = 2000
     n_samples = 50
     x = torch.linspace(-0.5, 0.5, n_samples).reshape(-1, 1).requires_grad_()
     #x = torch.linspace(0, 1.0, n_samples).reshape(-1, 1).requires_grad_()
-    U_p = 0.6
+    U_p = 0.65
     
     for i in range(1):
         #pinn = FCN(n_input, n_output, n_hidden, n_layers)
@@ -120,9 +120,14 @@ def main():
         
         """
         optimiser = torch.optim.LBFGS(
-            pinn.parameters(), lr=float(1e-4), max_iter=20000, max_eval=20000000, history_size=250,
+            pinn.parameters(), 
+            lr=float(1e-4), 
+            max_iter=20000, 
+            max_eval=20000000, 
+            history_size=250,
             #line_search_fn="strong_wolfe",
-            tolerance_change=1.0*np.finfo(float).eps, tolerance_grad=1.0*np.finfo(float).eps
+            tolerance_change=1.0*np.finfo(float).eps, 
+            tolerance_grad=1.0*np.finfo(float).eps
         )
         """
         #optimiser = torch.optim.LBFGS(pinn.parameters(), lr = 1e-4)
@@ -164,15 +169,15 @@ def main():
             E_hist_penalty = 0.5 * 1 * penalty * (hist_penalty**2) 
             
             energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
-
-            loss_energy = torch.log10(energy_tot)
+            loss_energy = torch.mean(torch.sqrt(energy_tot))
+            #loss_energy = torch.log10(energy_tot)
             # Weight regularization: L2 penalty over all parameters
             
-            l2_reg = 0.0
-            for param in pinn.parameters():
-                l2_reg += torch.sum(param ** 2)
+            #l2_reg = 0.0
+            #for param in pinn.parameters():
+            #    l2_reg += torch.sum(param ** 2)
                 
-            loss = loss_energy + weight_decay * l2_reg
+            loss = loss_energy #+ weight_decay * l2_reg
             
             loss.backward()
             # return the loss for the optimiser

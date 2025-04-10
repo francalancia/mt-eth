@@ -101,15 +101,15 @@ def main():
     n_input = 1
     n_output = 2
     n_hidden = 50
-    n_layers = 7
-    n_epochs = 4000
+    n_layers = 4
+    n_epochs = 2000
     n_samples = 50
     x = torch.linspace(0.0, 2.0, n_samples).reshape(-1, 1).requires_grad_()
     U_p = 0.5
     
     for i in range (1):
         #pinn = FCN(n_input, n_output, n_hidden, n_layers)
-        pinn = NeuralNet(n_input, n_output, n_layers, n_hidden, 'SteepReLU', init_coeff=1.0)
+        pinn = NeuralNet(n_input, n_output, n_layers, n_hidden, 'SteepTanh', init_coeff=1.0)
         init_xavier(pinn)
         #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
         #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
@@ -142,7 +142,7 @@ def main():
 
 
         cw = 8.0/3.0
-        weight_decay = 0.0
+        weight_decay = 1e-05
         #tol_ir = 5e-3
         tol_ir = 0.01
         penalty = (Gc/l) *( (1 /(tol_ir**2))-1)
@@ -256,10 +256,10 @@ def main():
         e_dam_np = energy_damage.detach().cpu().numpy()
 
         # Use f-strings to incorporate 'my_var' into the filenames
-        npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldstrong_UP{U_p}.npz"
-        csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldstrong_UP{U_p}.csv"
+        npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldstrong_tanh_UP{U_p}.npz"
+        csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldstrong_tanh_UP{U_p}.csv"
         data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
-        if False:
+        if True:
             # Save to NPZ
             np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
 

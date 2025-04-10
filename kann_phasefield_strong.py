@@ -5,7 +5,7 @@ import torch
 import torch.nn.init as init
 import torch.nn as nn
 import tqdm
-import parameters_phasefield as param
+import parameters_phasefield_strong as param
 import pandas as pd
 import numpy as np
 import os
@@ -40,14 +40,14 @@ class LagrKANNautoinner(torch.nn.Module):
         self.x_min = x_min
         self.x_max = x_max
 
-        #self.weight = torch.nn.parameter.Parameter(
-        #    torch.ones((self.n_width, self.n_nodes))
-        #)
+        self.weight = torch.nn.parameter.Parameter(
+            torch.zeros((self.n_width, self.n_nodes))
+        )
         # Define weight as a parameter
-        self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
+        #self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
 
         # Apply Xavier initialization (uniform)
-        init.xavier_normal_(self.weight, gain=1.0)
+        #init.xavier_normal_(self.weight, gain=1.0)
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -193,14 +193,14 @@ class LagrKANNautoouter(torch.nn.Module):
         self.x_min = x_min
         self.x_max = x_max
 
-        #self.weight = torch.nn.parameter.Parameter(
-        #    torch.ones((self.n_width, self.n_nodes))
-        #)
+        self.weight = torch.nn.parameter.Parameter(
+            torch.zeros((self.n_width, self.n_nodes))
+        )
         # Define weight as a parameter
-        self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
+        #self.weight = torch.nn.Parameter(torch.empty((self.n_width, self.n_nodes)))
 
         # Apply Xavier initialization (uniform)
-        init.xavier_normal_(self.weight, gain=1.0)
+        #init.xavier_normal_(self.weight, gain=1.0)
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
         nodes = torch.linspace(-1.0, 1.0, n_order + 1)
@@ -585,8 +585,8 @@ def main():
         raise SystemExit("\nNo valid AT model selected\n")
     
     # Calculate constant penalty value gamma
-    #gamma = (Gc / l) * ((1.0 /(TOL_irr**2.0)) - 1.0)
-    gamma = (27/(64*TOL_irr**2))
+    gamma = (Gc / l) * ((1.0 /(TOL_irr**2.0)) - 1.0)
+    #gamma = (27/(64*TOL_irr**2))
     L = abs(x_max - x_min)
     # Create the collocation points
     x_i = torch.linspace(x_min, x_max, n_samples).requires_grad_()
@@ -612,141 +612,129 @@ def main():
     )
     alpha_prev = torch.zeros_like(x_i)
     # Currently only using a singular loading step for the problem fixed at a small value
-    Ut = 0.6
-    
-    #raise SystemExit("\nNothing Implemented yet that would work\n")
-    optimizer = torch.optim.Rprop(list(model_u.parameters()) + list(model_alpha.parameters()), lr=1e-2, step_sizes=(1e-10, 50))
-
-    #optimizer = torch.optim.LBFGS(
-    #    list(model_u.parameters()) + list(model_alpha.parameters()), lr = 1e-4
-    #    )
-    def closure():
-        optimizer.zero_grad()
-        u_hat = []
-        alpha_hat = []
-        loss_mean = []
-        for sample in range(n_samples):
-            # Get the collocation point 
-            x = x_i[sample].unsqueeze(-1)
-            # Calculate the model prediction for the displacement u and alpha with HBC   
-            u = ((x + 0.5)*(x - 0.5)*model_u(x) + (x + 0.5)) * Ut
-            alpha = (x + 0.5) * (x - 0.5) * model_alpha(x)
-   
-            # Calculate the model prediction for the displacement u and alpha without HBC
-            dudx = torch.autograd.grad(u_hat.sum(), x_i, create_graph=True)[0]
-            dalphadx = torch.autograd.grad(alpha_hat.sum(), x_i,  create_graph=True)[0]
-            
-            #compute energies
-            energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
-            energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2)) 
-
-            dAlpha = alpha_hat - torch.zeros_like(alpha_hat)
-            hist_penalty = nn.ReLU()(-dAlpha) 
-            E_hist_penalty = 0.5 * gamma * (hist_penalty**2) 
-        
-            energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
-            
-            loss_energy = torch.log10(energy_tot)
-            # Weight regularization: L2 penalty over all parameters
-            l2u_reg = 0.0
-            for paramu in model_u.parameters():
-                l2u_reg += torch.sum(paramu ** 2)
-            l2a_reg = 0.0
-            for parama in model_alpha.parameters():
-                l2a_reg += torch.sum(parama ** 2)
-        
-            loss = loss_energy + l2u_reg * 1e-5 + l2a_reg* 1e-5
-            loss.backward()
-            loss_mean.append(loss.item())
-        loss_mean = torch.mean(torch.tensor(loss_mean))
-        return loss_mean
+    Ut = 0.3
     
     with tqdm.trange(n_epochs) as pbar1:
         for epoch_idx in pbar1:
-            loss = optimizer.step(closure)
+            
+            loss_epoch = torch.zeros((n_samples,))
+            
+            for sample in range(n_samples):
+                loss = 0.0
+                x = x_i[sample].unsqueeze(-1)
+                u_hat = ((x * (x - L) * model_u(x)) + (x)) * (Ut)/L
+                alpha_hat =  x * (x -L)*model_alpha(x)
+                
+                dudx = torch.autograd.grad(u_hat, x, torch.ones_like(x) , create_graph=True, retain_graph=True)[0]
+                dalphadx = torch.autograd.grad(alpha_hat, x, torch.ones_like(x) , create_graph=True, retain_graph=True)[0]
+                d2alphad2x = torch.autograd.grad(dalphadx, x, torch.ones_like(x) , create_graph=True, retain_graph=True)[0]
+                
+                equilibrium_eq_in = ((1 - alpha_hat) ** 2) * mat_E * (dudx)
+                equilibrium_eq = torch.autograd.grad(equilibrium_eq_in.sum(), x, create_graph=True, retain_graph=True)[0]
+                
+                damage_crit_eq = (-2 *(1-alpha_hat) * mat_E * ((dudx) ** 2) ) + ((Gc/cw) * ((1.0 /l) - (2 * l * (d2alphad2x))))
 
-            #loss_mean = torch.mean(loss_epoch)
-            loss_str = f"{loss.item():0.4e}"
+                dAlpha = alpha_hat - torch.zeros_like(alpha_hat)
+                hist_penalty = nn.ReLU()(-dAlpha)
+                E_hist_penalty =  gamma * (hist_penalty)
+                
+                restot = (equilibrium_eq + damage_crit_eq + E_hist_penalty)
+                
+                loss1 = torch.mean(torch.square(equilibrium_eq))
+                loss2 = torch.mean(torch.square(damage_crit_eq))
+                loss3 = torch.mean(torch.square(E_hist_penalty))
+                loss =  loss1 + loss2 + loss3
+                
+                g_lst_u = torch.autograd.grad(
+                    outputs=restot,
+                    inputs=model_u.parameters(),
+                    retain_graph=True,
+                )
+                
+                g_lst_alpha = torch.autograd.grad(
+                    outputs=restot,
+                    inputs=model_alpha.parameters(),
+                    retain_graph=True,
+                )
+                
+                norm_u  = torch.linalg.norm(torch.hstack(g_lst_u))**2
+                norm_alpha  = torch.linalg.norm(torch.hstack(g_lst_alpha))**2
+                norm = norm_u + norm_alpha
+                #norm_u += 1e-16
+                # Kaczmarz update
+                lr = 1e-0
+                for p, g in zip(model_u.parameters(), g_lst_u):
+                    update = lr*(restot / norm_u) * torch.squeeze(g)
+                    p.data -= update
+                for p, g in zip(model_alpha.parameters(), g_lst_alpha):
+                    update = lr*(restot / norm_alpha) * torch.squeeze(g)
+                    p.data -= update
+
+                loss_epoch[sample] = loss
+
+            loss_mean = torch.mean(loss_epoch)
+            loss_str = f"{loss_mean.item():0.4e}"
 
             pbar1.set_postfix(loss=loss_str)
-            """
-            if enable_animation:
-                    if epoch_idx % anim_intvl == 0:
-                        with torch.no_grad():
-                            sampleeval = 0
-                            vec = torch.zeros(n_samples)
-                            const = torch.zeros_like(x_i)
-                            model_input = torch.stack([x_i, const], dim=1)
-                            for sampleeval in range(n_samples):
-                                x = x_i[sampleeval].unsqueeze(-1)
-                                model_input_i = model_input[sampleeval].unsqueeze(0)
-                                y_hat_intermediary_1 = 1.0+x*model_1(model_input_i,epoch_idx,sampleeval)
-                                y_hat_intermediary_2 = 1.0+x*model_1(model_input_i,epoch_idx,sampleeval)
-                                y_hat_intermediary = ((y_hat_intermediary_1*0.5) + (y_hat_intermediary_2*0.5))
-                                vec[sampleeval] = y_hat_intermediary
-                            vec = vec.detach().numpy().reshape(-1,1)
-                            if epoch_idx == 0:
-                                solutions[:,counter] = vec[:,0].flatten()
-                            else:
-                                solutions[:,counter] = vec[:,0].flatten()
-                            counter += 1
-            """
+
     
     print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
     #model_u.eval()
     #model_alpha.eval()
-    x_hat = torch.linspace(x_min, x_max, n_samples, requires_grad=True)
-    u_hat = torch.zeros_like(x_hat)
-    alpha_hat = torch.zeros_like(x_hat)
+    x_sol = torch.linspace(x_min, x_max, n_samples, requires_grad=True)
+    u_sol = torch.zeros_like(x_sol)
+    alpha_sol = torch.zeros_like(x_sol)
     for sample in range(n_samples):
-        x = x_hat[sample].unsqueeze(-1)
-        u_hati = ((x + 0.5)*(x - 0.5)*model_u(x) + (x + 0.5))*Ut
-        alpha_hati = (x + 0.5)*(x - 0.5)*model_alpha(x)
-        u_hat[sample] = u_hati
-        alpha_hat[sample]  = alpha_hati
+        x = x_sol[sample].unsqueeze(-1)
+        u_hat = ((x  * (x - L) * model_u(x)) + (x)) * (Ut)/L
+        alpha_hat = x * (x-L)*model_alpha(x)
+
+        u_sol[sample] = u_hat
+        alpha_sol[sample]  = alpha_hat
     # compute the derivatives
-    dudx = torch.autograd.grad(u_hat.sum(), x_hat, create_graph=True)[0]
-    dalphadx = torch.autograd.grad(alpha_hat.sum(), x_hat,  create_graph=True)[0]
+    #dudx = torch.autograd.grad(u_hat.sum(), x_hat, create_graph=True)[0]
+    #dalphadx = torch.autograd.grad(alpha_hat.sum(), x_hat,  create_graph=True)[0]
     
     #compute energies
-    energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
-    energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2))
+    #energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
+    #energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2))
     
     fig, axs = plt.subplots(1, 2, figsize=(10, 4))
-    axs[0].plot(x_i.detach().numpy(), u_hat.detach().numpy(), label="u")
+    axs[0].plot(x_i.detach().numpy(), u_sol.detach().numpy(), label="u")
     axs[0].set_xlabel("x")
     axs[0].set_ylabel("u")
     axs[0].set_title("Displacement")
     axs[0].set_ylim(-0.1, 1.1)
     axs[0].grid()
     
-    axs[1].plot(x_i.detach().numpy(), alpha_hat.detach().numpy(), label="alpha")
+    axs[1].plot(x_i.detach().numpy(), alpha_sol.detach().numpy(), label="alpha")
     axs[1].set_xlabel("x")
     axs[1].set_ylabel("alpha")
     axs[1].set_title("Phase Field")
     axs[1].grid()
-    axs[1].set_ylim(-0.1, 1.1)
+    #axs[1].set_ylim(-0.1, 1.1)
     plt.tight_layout()
     plt.show()
-    x_np = x_i.detach().cpu().numpy()
-    u_np = u_hat.detach().cpu().numpy()
-    alpha_np = alpha_hat.detach().cpu().numpy()
-    e_el_np = energy_elastic.detach().cpu().numpy()
-    e_dam_np = energy_damage.detach().cpu().numpy()
+    if True:
+        x_np = x_i.detach().cpu().numpy()
+        u_np = u_hat.detach().cpu().numpy()
+        alpha_np = alpha_hat.detach().cpu().numpy()
+        #e_el_np = energy_elastic.detach().cpu().numpy()
+        #e_dam_np = energy_damage.detach().cpu().numpy()
 
-    # Use f-strings to incorporate 'my_var' into the filenames
-    npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\KANNoutputphasefieldweak_UP{Ut}.npz"
-    csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\KANNoutputphasefieldweak_UP{Ut}.csv"
+        # Use f-strings to incorporate 'my_var' into the filenames
+        npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\KANNoutputphasefieldstrong_UP{Ut}.npz"
+        csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\KANNoutputphasefieldstrong_UP{Ut}.csv"
 
-    # Save to NPZ
-    np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
+        # Save to NPZ
+        np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=None, e_dam=None)
 
-    # Optionally also save as CSV
-    data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
-    np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha,el, dam", comments="")
+        # Optionally also save as CSV
+        data_to_save = np.hstack([x_np, u_np, alpha_np])
+        np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha", comments="")
 
-    print(f"Saved NPZ to: {npz_path}")
-    print(f"Saved CSV to: {csv_path}")
+        print(f"Saved NPZ to: {npz_path}")
+        print(f"Saved CSV to: {csv_path}")
     return None
 
 if __name__ == "__main__":

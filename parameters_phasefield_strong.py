@@ -1,8 +1,8 @@
 # Model Parameters
-n_width = 10
+n_width = 50
 n_order = 1
-n_samples = 51
-n_epochs = 2000
+n_samples = 10
+n_epochs = 50
 spacing = 2
 
 # Settings Domain Extrema (Lenght of Bar = 2)
@@ -14,7 +14,7 @@ l = 0.05
 mat_E = 1.0
 Gc = 0.01
 TOL_irr = 5e-03
-
+#TOL_irr = 0.01
 # Displacement Loading
 U_max = 1.0
 load_steps = 10
