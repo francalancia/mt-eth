@@ -9,7 +9,7 @@ from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 import datetime
 from NN_gitlab import NeuralNet, init_xavier
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-torch.manual_seed(432)
+torch.manual_seed(42)
 torch.set_default_dtype(torch.float32)
 
 plt.rcParams.update({
@@ -101,15 +101,15 @@ def main():
     n_input = 1
     n_output = 2
     n_hidden = 50
-    n_layers = 4
-    n_epochs = 2000
+    n_layers = 7
+    n_epochs = 4000
     n_samples = 50
-    x = torch.linspace(-0.5, 0.5, n_samples).reshape(-1, 1).requires_grad_()
-    U_p = 0.65
+    x = torch.linspace(0.0, 2.0, n_samples).reshape(-1, 1).requires_grad_()
+    U_p = 0.5
     
     for i in range (1):
         #pinn = FCN(n_input, n_output, n_hidden, n_layers)
-        pinn = NeuralNet(n_input, n_output, n_layers, n_hidden, 'SteepTanh', init_coeff=1.0)
+        pinn = NeuralNet(n_input, n_output, n_layers, n_hidden, 'SteepReLU', init_coeff=1.0)
         init_xavier(pinn)
         #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
         #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
@@ -124,9 +124,8 @@ def main():
         tolerance_change=1e-10,
         #line_search_fn='strong_wolfe'
         )
-        """
         
-        """
+        
         optimiser = torch.optim.LBFGS(
             pinn.parameters(), lr=float(1e-4), max_iter=20000, max_eval=20000000, history_size=250,
             #line_search_fn="strong_wolfe",
@@ -134,19 +133,20 @@ def main():
         )
         """
         #optimiser = torch.optim.LBFGS(pinn.parameters(), lr = 1e-4)
-        optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-8 , step_sizes=(1e-10, 50))
+        optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-8 , step_sizes=(1e-11, 50))
         
-        L = 1.0
-        l = 0.05
+        L = 2.0
+        l = 0.1
         E_mat = 1.0
         Gc = 0.01
 
 
         cw = 8.0/3.0
-        weight_decay = 1e-4
-        tol_ir = 5e-3
-        #penalty = (Gc/l) *( (1 /(tol_ir**2))-1)
-        penalty = (Gc/l) *(27/(64*(tol_ir**2)))
+        weight_decay = 0.0
+        #tol_ir = 5e-3
+        tol_ir = 0.01
+        penalty = (Gc/l) *( (1 /(tol_ir**2))-1)
+        #penalty = (Gc/l) *(27/(64*(tol_ir**2)))
 
         
         def closure():
@@ -160,12 +160,12 @@ def main():
             #alpha = piecewise_alpha(alpha_hat)
             
             # enforce hard boundary conditions
-            #u = ((x  * (x - L) * u_hat) + (x)) * (U_p)/L
+            u = ((x  * (x - L) * u_hat) + (x)) * (U_p)/L
 
-            #alpha = (x)*(x-L) * alpha_hat
+            alpha = (x)*(x-L) * alpha_hat
             
-            u = (((x + 0.5) * (x - 0.5) * u_hat) + (x + 0.5)) * U_p
-            alpha = (x + 0.5) * (x - 0.5) * alpha_hat
+            #u = (((x + 0.5) * (x - 0.5) * u_hat) + (x + 0.5)) * U_p
+            #alpha = (x + 0.5) * (x - 0.5) * alpha_hat
         
             
             # compute the derivatives
@@ -178,21 +178,20 @@ def main():
             
             equilibrium_eq_in = ((1-alpha) ** 2) * E_mat * (dudx)
             equilibrium_eq = torch.autograd.grad(equilibrium_eq_in.sum(), x, create_graph=True)[0]
-            dAlpha = alpha - torch.zeros_like(alpha)
-            hist_penalty = nn.ReLU()(-dAlpha) 
+            #dAlpha = alpha - torch.zeros_like(alpha)
+            #hist_penalty = nn.ReLU()(-dAlpha) 
             damage_crit_eq = (-2 *(1-alpha) * E_mat * ((dudx) ** 2) ) + ((Gc/cw) * ((1.0 /l) - (2 * l * (d2alphad2x))))
 
                     
             dAlpha = alpha - torch.zeros_like(alpha)
-            hist_penalty = nn.ReLU()(-dAlpha) 
-            
-            E_hist_penalty = 0.5 * penalty * (hist_penalty**2) 
+            hist_penalty = nn.ReLU()(-dAlpha)
+            E_hist_penalty =  penalty * (hist_penalty) 
             
             
             loss1 = torch.mean(equilibrium_eq**2)
             loss2 = torch.mean(damage_crit_eq**2)
             loss3 = torch.mean(E_hist_penalty**2)
-            loss_tot =  loss1 +loss2 + loss3
+            loss_tot =  loss1 + loss2 + loss3
             #loss_tot = torch.mean((equilibrium_eq+ damage_crit_eq+E_hist_penalty)**2)
             # Weight regularization: L2 penalty over all parameters
             
@@ -216,10 +215,10 @@ def main():
         output = pinn(x)
         u_sol = output[:, 0].reshape(-1, 1)
         alpha_sol = output[:, 1].reshape(-1, 1)
-        #u = ((x* (x - L) * u_sol) + (x)) * (U_p/L)
-        #alpha = x*(x-L) * alpha_sol
-        u = (((x + 0.5) * (x - 0.5) * u_sol) + (x + 0.5)) * U_p
-        alpha = (x + 0.5) * (x - 0.5) * alpha_sol
+        u = ((x* (x - L) * u_sol) + (x)) * (U_p/L)
+        alpha = x*(x-L) * alpha_sol
+        #u = (((x + 0.5) * (x - 0.5) * u_sol) + (x + 0.5)) * U_p
+        #alpha = (x + 0.5) * (x - 0.5) * alpha_sol
         # compute the derivatives
         dudx = torch.autograd.grad(u.sum(), x, create_graph=True)[0]
         #dudx_org = torch.autograd.grad(u, x, grad_outputs=torch.ones_like(u), create_graph=True)[0]

@@ -612,7 +612,7 @@ def main():
     )
     alpha_prev = torch.zeros_like(x_i)
     # Currently only using a singular loading step for the problem fixed at a small value
-    Ut = 0.60
+    Ut = 0.6
     
     #raise SystemExit("\nNothing Implemented yet that would work\n")
     optimizer = torch.optim.Rprop(list(model_u.parameters()) + list(model_alpha.parameters()), lr=1e-2, step_sizes=(1e-10, 50))
@@ -624,43 +624,42 @@ def main():
         optimizer.zero_grad()
         u_hat = []
         alpha_hat = []
+        loss_mean = []
         for sample in range(n_samples):
-                # Get the collocation point 
-                x = x_i[sample].unsqueeze(-1)
-                # Calculate the model prediction for the displacement u and alpha with HBC   
-                u = ((x + 0.5)*(x - 0.5)*model_u(x) + (x + 0.5)) * Ut
-                alpha = (x + 0.5) * (x - 0.5) * model_alpha(x)
-                u_hat.append(u)
-                alpha_hat.append(alpha)
-                
-        u_hat = torch.stack(u_hat)
-        alpha_hat = torch.stack(alpha_hat)    
-        # compute the derivatives
-        dudx = torch.autograd.grad(u_hat.sum(), x_i, create_graph=True)[0]
-        dalphadx = torch.autograd.grad(alpha_hat.sum(), x_i,  create_graph=True)[0]
-        
-        #compute energies
-        energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
-        energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2)) 
+            # Get the collocation point 
+            x = x_i[sample].unsqueeze(-1)
+            # Calculate the model prediction for the displacement u and alpha with HBC   
+            u = ((x + 0.5)*(x - 0.5)*model_u(x) + (x + 0.5)) * Ut
+            alpha = (x + 0.5) * (x - 0.5) * model_alpha(x)
+   
+            # Calculate the model prediction for the displacement u and alpha without HBC
+            dudx = torch.autograd.grad(u_hat.sum(), x_i, create_graph=True)[0]
+            dalphadx = torch.autograd.grad(alpha_hat.sum(), x_i,  create_graph=True)[0]
+            
+            #compute energies
+            energy_elastic = 0.5 * ((1.0 - alpha_hat) ** 2) * (dudx ** 2) 
+            energy_damage = (1/cw) * (alpha_hat + (l**2) * ((dalphadx) ** 2)) 
 
-        dAlpha = alpha_hat - torch.zeros_like(alpha_hat)
-        hist_penalty = nn.ReLU()(-dAlpha) 
-        E_hist_penalty = 0.5 * gamma * (hist_penalty**2) 
-    
-        energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
+            dAlpha = alpha_hat - torch.zeros_like(alpha_hat)
+            hist_penalty = nn.ReLU()(-dAlpha) 
+            E_hist_penalty = 0.5 * gamma * (hist_penalty**2) 
         
-        loss_energy = torch.log10(energy_tot)
-        # Weight regularization: L2 penalty over all parameters
-        l2u_reg = 0.0
-        for paramu in model_u.parameters():
-            l2u_reg += torch.sum(paramu ** 2)
-        l2a_reg = 0.0
-        for parama in model_alpha.parameters():
-            l2a_reg += torch.sum(parama ** 2)
-    
-        loss = loss_energy + l2u_reg * 1e-5 + l2a_reg* 1e-5
-        loss.backward()
-        return loss
+            energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
+            
+            loss_energy = torch.log10(energy_tot)
+            # Weight regularization: L2 penalty over all parameters
+            l2u_reg = 0.0
+            for paramu in model_u.parameters():
+                l2u_reg += torch.sum(paramu ** 2)
+            l2a_reg = 0.0
+            for parama in model_alpha.parameters():
+                l2a_reg += torch.sum(parama ** 2)
+        
+            loss = loss_energy + l2u_reg * 1e-5 + l2a_reg* 1e-5
+            loss.backward()
+            loss_mean.append(loss.item())
+        loss_mean = torch.mean(torch.tensor(loss_mean))
+        return loss_mean
     
     with tqdm.trange(n_epochs) as pbar1:
         for epoch_idx in pbar1:
@@ -729,7 +728,7 @@ def main():
     axs[1].set_ylim(-0.1, 1.1)
     plt.tight_layout()
     plt.show()
-    x_np = x.detach().cpu().numpy()
+    x_np = x_i.detach().cpu().numpy()
     u_np = u_hat.detach().cpu().numpy()
     alpha_np = alpha_hat.detach().cpu().numpy()
     e_el_np = energy_elastic.detach().cpu().numpy()
@@ -744,7 +743,7 @@ def main():
 
     # Optionally also save as CSV
     data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
-    np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha", comments="")
+    np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha,el, dam", comments="")
 
     print(f"Saved NPZ to: {npz_path}")
     print(f"Saved CSV to: {csv_path}")

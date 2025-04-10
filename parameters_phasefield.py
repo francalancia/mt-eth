@@ -1,8 +1,8 @@
 # Model Parameters
-n_width = 2
-n_order = 5
-n_samples = 101
-n_epochs = 200
+n_width = 10
+n_order = 1
+n_samples = 51
+n_epochs = 2000
 spacing = 2
 
 # Settings Domain Extrema (Lenght of Bar = 2)
