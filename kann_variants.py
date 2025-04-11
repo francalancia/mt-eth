@@ -1084,15 +1084,16 @@ def main():
     prestop = parameters.prestop
     save = parameters.save
     
-    # why does number of elements change?
     n_elements = int((n_samples - 2) / n_order)
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
-    
-    for run in range(runs):
+    n_width_list = np.array([50,25,10,5,1])
+    for index in range(n_width_list.shape[0]):
+        n_width = n_width_list[index]
+        print(n_width)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        print(f"\nrun at iteration {run+1}")
+        print(f"\nrun at iteration {index+1}")
         same_loss_counter = 0
         previous_loss = 0
 
@@ -1130,7 +1131,6 @@ def main():
             autodiff=autodiff,
             speedup=speedup
         )
-        solutions = np.empty((n_samples,1))
         with tqdm.trange(n_epochs) as pbar1:
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
@@ -1187,7 +1187,7 @@ def main():
                     
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
-                        update = 1.2*(residual / norm) * torch.squeeze(g)
+                        update = (residual / norm) * torch.squeeze(g)
                         #update = 1e-3 * torch.squeeze(g)
                         p.data -= update
 
@@ -1207,30 +1207,12 @@ def main():
                 previous_loss = loss_mean.item()
                 if prestop:
                     if same_loss_counter >= 40:
-                        values[run, 6] = pbar1.format_dict["elapsed"]
                         break
                 
                 if loss_mean.item() <= tol:
-                    values[run, 6] = pbar1.format_dict["elapsed"]
                     break
                 Tickrate = pbar1.format_dict['rate']
                 
-                if _ == 0 or _ % 100 == 0:
-                    loss_tracking[rval,0] = _
-                    loss_tracking[rval,1] = loss_mean
-                    rval += 1
-                if _ % 100 == 0:
-                    vec = torch.zeros_like(x_i)
-                    for sample in range(n_samples):
-                        x = x_i[sample].unsqueeze(-1)
-                        vec[sample] = 1 + x * model(x,_,sample)
-                    vec = vec.detach().numpy().reshape(-1,1)
-                    if _ == 0:
-                        solutions = vec
-                    else:
-                        solutions = np.hstack([solutions, vec])
-        loss_tracking[rval,0] = _
-        loss_tracking[rval,1] = loss_mean
             
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
@@ -1249,40 +1231,22 @@ def main():
         
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
-        # how many samples, width, order, tol, l2-error,  which epoch, runtinme
-        values[run, 0] = n_samples
-        values[run, 1] = n_width
-        values[run, 2] = n_order
-        values[run, 3] = tol
-        values[run, 4] = loss_mean
-        values[run, 5] = l2
-        values[run, 6] = _
-        values[run, 7] = pbar1.format_dict["elapsed"]
-        #values[run, 8] = Tickrate
-        #n_samples = n_samples + 5
-
-    y_hat2 = y_hat.detach().numpy().reshape(-1,1)
-    solutions = np.hstack([solutions, y_hat2])
-    l2 = l2.detach().numpy()
-    #create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
-    plot_solution(save,x_i, y_hat, y_i, l2)
-    if False:
-        save_excel(values, autodiff, regression, speedup, prestop)
-        save_excel(loss_tracking, autodiff, regression, speedup, prestop)
-    
-    x_np = x_i.detach().numpy()
-    y_np = y_hat.detach().numpy()
-    n_width_np = np.full(x_np.shape, n_width)
-    n_order_np = np.full(x_np.shape, n_order)
-    n_samples_np = np.full(x_np.shape, n_samples)
-    n_epochs_np = np.full(x_np.shape, n_epochs)
-    
-    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_A{autodiff}_S{speedup}_l2_{l2}.npz"
-    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_A{autodiff}_S{speedup}_l2_{l2}.csv"
-    
-    data_to_save = np.hstack([x_np, y_np, n_width_np, n_order_np, n_epochs_np, n_samples_np])
-    np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np)
-    np.savetxt(csv_path, data_to_save, delimiter=",", header="x,y,width, order, epochs,samples", comments="")
+        l2 = l2.detach().numpy()
+        #create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
+        #plot_solution(save,x_i, y_hat, y_i, l2)
+        
+        x_np = x_i.detach().numpy()
+        y_np = y_hat.detach().numpy()
+        n_width_np = np.full(x_np.shape, n_width)
+        n_order_np = np.full(x_np.shape, n_order)
+        n_samples_np = np.full(x_np.shape, n_samples)
+        n_epochs_np = np.full(x_np.shape, n_epochs)
+        time = np.full(x_np.shape, pbar1.format_dict['elapsed'])
+        epochs_used = np.full(x_np.shape, _)
+        loss_mean = np.full(x_np.shape, loss_mean.item())
+        
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\width_study\KANN_ODE_DISC_nw{n_width}_no{n_order}_ns{n_samples}.npz"
+        np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_mean = loss_mean)
 
     
     return None

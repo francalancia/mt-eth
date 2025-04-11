@@ -179,7 +179,7 @@ class FCN(nn.Module):
 
     def __init__(self, N_INPUT, N_OUTPUT, N_HIDDEN, N_LAYERS):
         super().__init__()
-        activation = nn.Sigmoid
+        activation = nn.Sigmoid   
         self.fcs = nn.Sequential(*[nn.Linear(N_INPUT, N_HIDDEN), activation()])
         # creates identical hidden layers N_layers-1, fully connected with activation function
         self.fch = nn.Sequential(
@@ -228,21 +228,21 @@ def collocationpoints(total_values):
     combined = combined.detach().numpy()
     return combined
 def main():
-    learning = False
+    learning = True
     save = False
     show = True
-    heaviside_bool = True
+    heaviside_bool = False
     # define neural network to train
     n_input = 1
     n_output = 1
     n_hidden = 32
     n_layers = 2
-    n_epochs = 100
+    n_epochs = 50000
     k = 1000
 
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
     tot_val_log = 701
-    tot_val = 501
+    tot_val = 191
     # define collocation points
     col_points2 = collocationpoints(tot_val_log)
     col_points = np.linspace(0, 10, tot_val)
@@ -271,31 +271,37 @@ def main():
         plt.grid()
         plt.show()
     col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
-    with torch.no_grad():
-        if heaviside_bool:
-            heavyside = heaviside(col_points)
-        else:
-            jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
-    
+    """
+    if heaviside_bool:
+        heavyside = heaviside(col_points)
+    else:
+        jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
+   """
+    if heaviside_bool: 
+        heavyside = heaviside(col_points)
     #solutions = []
-    #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3, weight_decay=3e-2)
+    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-2, weight_decay=1e-5)
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
-    
+    """
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
-    lr=0.1,            
-    max_iter=400, #prev 1000        
-    history_size=150,    
+    lr=1e-6,            
+    max_iter=100, #prev 1000        
+    history_size=20000,    
     tolerance_grad=1e-14,
     tolerance_change=1e-16,
     line_search_fn='strong_wolfe'
     )
-    
+    """
     if learning:
         def closure():
             # zero the gradients
             optimiser.zero_grad()
             # compute model output for the collocation points
+            if heaviside_bool:
+                jump = heavyside
+            else:
+                jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
             f_x =pinn(col_points)
             # compute the grad of the output w.r.t. to the collocation points
             df_xdx = torch.autograd.grad(
@@ -358,8 +364,8 @@ def main():
     k_np = np.full(x_np.shape, k)
     tot_val_np = np.full(x_np.shape, tot_val)
     
-    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP{heaviside_bool}_l2{l2_error}.npz"
-    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP{heaviside_bool}_l2{l2_error}.csv"
+    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP_Heavi{heaviside_bool}_k{k}_Tanh_l2{l2_error}.npz"
+    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP_Heavi{heaviside_bool}_k{k}_Tanh_l2{l2_error}.csv"
     
     if heaviside_bool:
         data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, tot_val_np])

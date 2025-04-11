@@ -128,10 +128,10 @@ def main():
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 50
-    n_layers = 4
+    n_hidden = 24
+    n_layers = 2
     n_epochs = 1000
-    tot_val = 50
+    tot_val = 60
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
     # define collocation points
@@ -144,9 +144,9 @@ def main():
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
-    lr=1e-05,            
+    lr=1e-04,            
     max_iter=100,        
-    history_size=150,    
+    history_size=20000,    
     tolerance_grad=1e-10,
     tolerance_change=1e-12,
     line_search_fn='strong_wolfe'
