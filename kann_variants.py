@@ -1088,9 +1088,10 @@ def main():
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
-    n_width_list = np.array([50,25,10,5,1])
+    n_width_list = np.array([250])
     for index in range(n_width_list.shape[0]):
-        n_width = n_width_list[index]
+        n_samples = n_width_list[index]
+        n_elements = int((n_samples - 2) / n_order)
         print(n_width)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         print(f"\nrun at iteration {index+1}")
