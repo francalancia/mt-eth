@@ -1088,11 +1088,15 @@ def main():
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
-    n_width_list = np.array([250])
+    n_width_list = np.array([1.8])
+    patience = 10
+    mu = 1
     for index in range(n_width_list.shape[0]):
-        n_samples = n_width_list[index]
+        loss_history = []
+        loss_stop = []
+        mu = n_width_list[index]
         n_elements = int((n_samples - 2) / n_order)
-        print(n_width)
+        #print(n_width)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         print(f"\nrun at iteration {index+1}")
         same_loss_counter = 0
@@ -1171,12 +1175,6 @@ def main():
                             outputs=residual,
                             inputs=model.parameters(),
                         )
-                        """
-                        g_lst = torch.autograd.grad(
-                            outputs=loss,
-                            inputs=model.parameters(),
-                        )
-                        """
                         norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
                     else:
                         g_lst = [A_inner, A_outer]
@@ -1188,7 +1186,7 @@ def main():
                     
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
-                        update = (residual / norm) * torch.squeeze(g)
+                        update = mu*(residual / norm) * torch.squeeze(g)
                         #update = 1e-3 * torch.squeeze(g)
                         p.data -= update
 
@@ -1198,20 +1196,16 @@ def main():
 
                 loss_mean = torch.mean(loss_epoch)
                 loss_str = f"{loss_mean.item():0.4e}"
-
+                loss_val = loss_mean.item()
                 pbar1.set_postfix(loss=loss_str)
-                if loss_mean.item() >= previous_loss:
-                    same_loss_counter += 1
-                else:
-                    same_loss_counter = 0
+                loss_history.append(loss_val)     # store float for saving later
+                loss_stop.append(loss_val)        # float for rounding comparison
 
-                previous_loss = loss_mean.item()
-                if prestop:
-                    if same_loss_counter >= 40:
-                        break
-                
-                if loss_mean.item() <= tol:
-                    break
+                if len(loss_stop) >= patience:
+                    recent_losses = [round(l, 12) for l in loss_stop[-patience:]]
+                    if all(l == recent_losses[-1] for l in recent_losses):
+                        print(f"Stopping early at epoch {_} as last {patience} losses are the same (rounded to 6 digits).")
+                        break   
                 Tickrate = pbar1.format_dict['rate']
                 
             
@@ -1236,6 +1230,8 @@ def main():
         #create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
         #plot_solution(save,x_i, y_hat, y_i, l2)
         
+        loss_history = np.array(loss_history)
+        
         x_np = x_i.detach().numpy()
         y_np = y_hat.detach().numpy()
         n_width_np = np.full(x_np.shape, n_width)
@@ -1245,9 +1241,10 @@ def main():
         time = np.full(x_np.shape, pbar1.format_dict['elapsed'])
         epochs_used = np.full(x_np.shape, _)
         loss_mean = np.full(x_np.shape, loss_mean.item())
+        l2 = np.full(x_np.shape, l2.item())
         
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\width_study\KANN_ODE_DISC_nw{n_width}_no{n_order}_ns{n_samples}.npz"
-        np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_mean = loss_mean)
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\mu\KANN_ODE_nw{n_width}_no{n_order}_ns{n_samples}_mu{mu}.npz"
+        np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_history = loss_history, l2 = l2)
 
     
     return None

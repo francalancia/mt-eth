@@ -1,8 +1,8 @@
 # Model Parameters
-n_width = 1
+n_width = 10
 n_order = 1
 n_samples = 51
-n_epochs = 1
+n_epochs = 2000
 spacing = 1
 
 linearspacing = True
@@ -15,14 +15,14 @@ step_loc = 1.0
 ndim_in = 1
 
 # Factor for the Logistic Function Steepness
-log_fct = False
-k = 3.2
+log_fct = True
+k = 1.0
 
 # Solving Method
-autodiff = False
+autodiff = True
 
 # Data Saving and Plot Options
-save = False
+save = True
 show = True
 enable_animation = False
 animation_interval = 10

@@ -9,7 +9,7 @@ from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 import datetime
 from NN_gitlab import NeuralNet, init_xavier
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-torch.manual_seed(432)
+torch.manual_seed(44)
 torch.set_default_dtype(torch.float32)
 
 class ScaledReLU(nn.Module):
@@ -68,28 +68,11 @@ class FCN(nn.Module):
         x = self.fce(x)
         return x
 
-def piecewise_alpha(alpha, beta=1e-3):
-    alpha = alpha.clone().requires_grad_()
-    result = torch.empty_like(alpha)
-
-    # Masks
-    mask_neg = alpha < -2
-    mask_pos = alpha > 2
-    mask_mid = (~mask_neg) & (~mask_pos)
-
-    # Assign pieces
-    result[mask_neg] = beta * (alpha[mask_neg] + 2)
-    result[mask_pos] = beta * (alpha[mask_pos] - 2) + 1
-    result[mask_mid] = alpha[mask_mid] / 4 + 0.5
-
-    return result
-
-
 def main():
     # define neural network to train
     n_input = 1
     n_output = 2
-    n_hidden = 15
+    n_hidden = 50
     n_layers = 4
     n_epochs = 2000
     n_samples = 50
@@ -97,7 +80,9 @@ def main():
     #x = torch.linspace(0, 1.0, n_samples).reshape(-1, 1).requires_grad_()
     U_p = 0.65
     
-    for i in range(1):
+    r_list = np.linspace(0, 1.0, 51)
+    for index in range(r_list.shape[0]):
+        U_p = r_list[index]
         #pinn = FCN(n_input, n_output, n_hidden, n_layers)
         pinn = NeuralNet(n_input, n_output, n_layers, n_hidden, 'SteepReLU', init_coeff=1.0)
         init_xavier(pinn)
@@ -121,17 +106,19 @@ def main():
         """
         optimiser = torch.optim.LBFGS(
             pinn.parameters(), 
-            lr=float(1e-4), 
-            max_iter=20000, 
-            max_eval=20000000, 
-            history_size=250,
-            #line_search_fn="strong_wolfe",
+            lr=float(1e-3), 
+            max_iter=10000, 
+            max_eval=10000000, 
+            history_size=200,
+            line_search_fn="strong_wolfe",
+            #tolerance_grad=1e-8,
+            #tolerance_change=1e-10,
             tolerance_change=1.0*np.finfo(float).eps, 
             tolerance_grad=1.0*np.finfo(float).eps
         )
         """
         #optimiser = torch.optim.LBFGS(pinn.parameters(), lr = 1e-4)
-        optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-8, step_sizes=(1e-10, 50))
+        optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-7, step_sizes=(1e-10, 50))
 
         l = 0.05
         cw = 8.0/3.0
@@ -169,7 +156,8 @@ def main():
             E_hist_penalty = 0.5 * 1 * penalty * (hist_penalty**2) 
             
             energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
-            loss_energy = torch.mean(torch.sqrt(energy_tot))
+            #loss_energy = torch.mean((torch.sum(energy_elastic))**2 + (torch.sum(energy_damage))**2 + (torch.sum(E_hist_penalty))**2)
+            loss_energy = torch.mean((energy_tot)**2)
             #loss_energy = torch.log10(energy_tot)
             # Weight regularization: L2 penalty over all parameters
             
@@ -235,7 +223,7 @@ def main():
         print(f"Elastic Energy: {e_el.item()}")
         print(f"Damage Energy: {e_dam.item()}")
         plt.tight_layout()
-        plt.show()
+        #plt.show()
         
         x_np = x.detach().cpu().numpy()
         u_np = u.detach().cpu().numpy()
@@ -244,8 +232,8 @@ def main():
         e_dam_np = energy_damage.detach().cpu().numpy()
 
         # Use f-strings to incorporate 'my_var' into the filenames
-        npz_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldweak_UP{U_p}.npz"
-        csv_path = fr"E:\ETH\Master\25HS_MA\Data_Phasefield\outputphasefieldweak_UP{U_p}.csv"
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSELOSS\outputphasefieldweak_UP{U_p}.npz"
+        csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSELOSS\outputphasefieldweak_UP{U_p}.csv"
 
         # Save to NPZ
         np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)

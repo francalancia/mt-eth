@@ -78,22 +78,6 @@ class FCN(nn.Module):
         x = self.fce(x)
         return x
 
-def piecewise_alpha(alpha, beta=1e-3):
-    alpha = alpha.clone().requires_grad_()
-    result = torch.empty_like(alpha)
-
-    # Masks
-    mask_neg = alpha < -2
-    mask_pos = alpha > 2
-    mask_mid = (~mask_neg) & (~mask_pos)
-
-    # Assign pieces
-    result[mask_neg] = beta * (alpha[mask_neg] + 2)
-    result[mask_pos] = beta * (alpha[mask_pos] - 2) + 1
-    result[mask_mid] = alpha[mask_mid] / 4 + 0.5
-
-    return result
-
 
 def main():
 

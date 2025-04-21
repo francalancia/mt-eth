@@ -367,6 +367,7 @@ class LagrKANNautoinner(torch.nn.Module):
         self.weight = torch.nn.parameter.Parameter(
             torch.zeros((self.n_width, self.n_nodes))
         )
+        init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -476,12 +477,12 @@ class LagrKANNautoinner(torch.nn.Module):
         delta_x_2nd = delta_x**2
 
         phi_local_ikp = self.lagrange(x_transformed, self.n_order)
-        dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
-        ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+        #dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
+        #ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
 
         phi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        #dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        #ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
 
         for sample in range(self.n_samples):
             for layer in range(self.n_width):
@@ -489,24 +490,24 @@ class LagrKANNautoinner(torch.nn.Module):
                     phi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
                         phi_local_ikp[sample, layer, node]
                     )
-                    dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        dphi_local_ikp[sample, layer, node] / delta_x_1st
-                    )
-                    ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        ddphi_local_ikp[sample, layer, node] / delta_x_2nd
-                    )
+                    #dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                    #    dphi_local_ikp[sample, layer, node] / delta_x_1st
+                    #)
+                    #ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                    #    ddphi_local_ikp[sample, layer, node] / delta_x_2nd
+                    #)
 
         t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_ikp)
-        dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
-        ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
+        #dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
+        #ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
 
         return {
             "t_ik": t_ik,
-            "dt_ik": dt_ik,
-            "ddt_ik": ddt_ik,
+            #"dt_ik": dt_ik,
+            #"ddt_ik": ddt_ik,
             "phi_ikp": phi_ikp,
-            "dphi_ikp": dphi_ikp,
-            "ddphi_ikp": ddphi_ikp,
+            #"dphi_ikp": dphi_ikp,
+            #"ddphi_ikp": ddphi_ikp,
             "delta_x": delta_x,
         }
 class LagrKANNautoouter(torch.nn.Module):
@@ -634,12 +635,12 @@ class LagrKANNautoouter(torch.nn.Module):
         delta_x_2nd = delta_x**2
 
         phi_local_ikp = self.lagrange(x_transformed, self.n_order)
-        dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
-        ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+        #dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
+        #ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
 
         phi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        #dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        #ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
 
         for sample in range(self.n_samples):
             for layer in range(self.n_width):
@@ -647,24 +648,24 @@ class LagrKANNautoouter(torch.nn.Module):
                     phi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
                         phi_local_ikp[sample, layer, node]
                     )
-                    dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        dphi_local_ikp[sample, layer, node] / delta_x_1st
-                    )
-                    ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        ddphi_local_ikp[sample, layer, node] / delta_x_2nd
-                    )
+                    #dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                    #    dphi_local_ikp[sample, layer, node] / delta_x_1st
+                    #)
+                    #ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                    #    ddphi_local_ikp[sample, layer, node] / delta_x_2nd
+                    #)
 
         t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_ikp)
-        dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
-        ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
+        #dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
+        #ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
 
         return {
             "t_ik": t_ik,
-            "dt_ik": dt_ik,
-            "ddt_ik": ddt_ik,
+            #"dt_ik": dt_ik,
+            #"ddt_ik": ddt_ik,
             "phi_ikp": phi_ikp,
-            "dphi_ikp": dphi_ikp,
-            "ddphi_ikp": ddphi_ikp,
+            #"dphi_ikp": dphi_ikp,
+            #"ddphi_ikp": ddphi_ikp,
             "delta_x": delta_x,
         }
 
@@ -1070,13 +1071,14 @@ def main():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     #rlist = np.array([1,5,10,25,50,100,200])
-    rlist = np.array([1,2])
+    rlist = np.array([1,5,10,25,50,100,250,500,1000])
     for index in range(rlist.shape[0]):
         loss = 0
         residual = 0
         _ = 0
-        n_width = int(rlist[index])
-        n_elements = int((n_samples - spacing) / n_order)
+        k = float(rlist[index])
+        #n_elements = int((n_samples - spacing))
+        n_elements = int((n_samples - spacing)/n_order)
     
         # Define if the collocation points are uniformly or non-uniformly spaced [could be also put into the conifg file later, only the True/False statement]
         logpoints = False
@@ -1183,7 +1185,7 @@ def main():
                     
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
-                        update = 0.8*(residual / norm) * torch.squeeze(g)
+                        update = (residual / norm) * torch.squeeze(g)
                         p.data -= update
 
                     loss_epoch[sample] = loss
@@ -1224,7 +1226,7 @@ def main():
         #solutions = np.hstack([solutions, y_hatvec])
         
         #create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing,x_max,interval1)
-        error_abs = plot_solution(saveloc,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str)
+        #error_abs = plot_solution(saveloc,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str)
         
         x_np = x_i.detach().numpy()
         y_np = y_hatvec2.detach().numpy()
@@ -1238,21 +1240,22 @@ def main():
         time = np.full(x_np.shape, pbar1.format_dict['elapsed'])
         loss_mean_np = np.full(x_np.shape, loss_mean.item())
 
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_JUMP\width\KANN_ODE_DISC_LOGFCT{log_fct}_nw{n_width}_no{n_order}_ns{n_samples}_sp{spacing}_y0{y0}_steploc{step_loc}.npz"
-        np.savez(
-            npz_path,
-            x=x_np,
-            f_x=y_np,
-            n_width=n_width_np,
-            n_order=n_order_np,
-            n_samples=n_samples_np,
-            n_epochs=n_epochs_np,
-            spacing=spacing_np,
-            y0=y0_np,
-            step_loc=step_loc_np,
-            runtime=time,
-            loss_mean=loss_mean_np
-        )
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_JUMP\LOGISTIC\KANN_ODE_DISC_LOGFCT{log_fct}_nw{n_width}_no{n_order}_ns{n_samples}_sp{spacing}_y{y0}_steploc{step_loc}.npz"
+        if True:
+            np.savez(
+                npz_path,
+                x=x_np,
+                f_x=y_np,
+                n_width=n_width_np,
+                n_order=n_order_np,
+                n_samples=n_samples_np,
+                n_epochs=n_epochs_np,
+                spacing=spacing_np,
+                y0=y0_np,
+                step_loc=step_loc_np,
+                runtime=time,
+                loss_mean=loss_mean_np
+            )
 
     
 

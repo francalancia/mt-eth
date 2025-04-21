@@ -597,7 +597,7 @@ def main():
         n_order = n_order,
         n_elements = n_elements,
         n_collocation = n_samples,
-        n_samples = 10,
+        n_samples = n_samples,
         x_min = x_min,
         x_max = x_max,
     )
@@ -606,16 +606,16 @@ def main():
         n_order = n_order,
         n_elements = n_elements,
         n_collocation = n_samples,
-        n_samples = 10,
+        n_samples = n_samples,
         x_min = x_min,
         x_max = x_max,
     )
     alpha_prev = torch.zeros_like(x_i)
     # Currently only using a singular loading step for the problem fixed at a small value
-    Ut = 0.65
+    Ut = 0.0
     
     #raise SystemExit("\nNothing Implemented yet that would work\n")
-    optimizer = torch.optim.Rprop(list(model_u.parameters()) + list(model_alpha.parameters()), lr=1e-2, step_sizes=(1e-10, 50))
+    optimizer = torch.optim.Rprop(list(model_u.parameters()) + list(model_alpha.parameters()), lr=1e-5, step_sizes=(1e-10, 50))
 
     #optimizer = torch.optim.LBFGS(
     #    list(model_u.parameters()) + list(model_alpha.parameters()), lr = 1e-4
@@ -670,7 +670,7 @@ def main():
         loss.backward()
         """
         energy_tot = torch.sum(energy_elastic) + torch.sum(energy_damage) + torch.sum(E_hist_penalty)
-        loss_energy = torch.mean(torch.sqrt(energy_tot))
+        loss_energy = torch.mean((energy_tot)**2)
             #loss_energy = torch.log10(energy_tot)
             # Weight regularization: L2 penalty over all parameters
             
@@ -769,7 +769,7 @@ def main():
     np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
 
     # Optionally also save as CSV
-    data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
+    #data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
     #np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha,el, dam", comments="")
 
     print(f"Saved NPZ to: {npz_path}")
