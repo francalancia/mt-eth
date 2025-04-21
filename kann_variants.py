@@ -1243,8 +1243,8 @@ def main():
         loss_mean = np.full(x_np.shape, loss_mean.item())
         l2 = np.full(x_np.shape, l2.item())
         
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\mu\KANN_ODE_nw{n_width}_no{n_order}_ns{n_samples}_mu{mu}.npz"
-        np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_history = loss_history, l2 = l2)
+       # npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\mu\KANN_ODE_nw{n_width}_no{n_order}_ns{n_samples}_mu{mu}.npz"
+        #np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_history = loss_history, l2 = l2)
 
     
     return None
