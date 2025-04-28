@@ -113,7 +113,7 @@ def load_and_plot_multiple_files(pattern):
     plt.tight_layout()
     #plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_PhasefieldEnergy_weak.png", dpi=300)
     #plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Phasefield_weak.png", dpi=300)
-    plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Phasefield_Strongwd.png", dpi=300)
+    #plt.savefig(r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Phasefield_Strongwd.png", dpi=300)
     
     
     
@@ -123,8 +123,8 @@ def load_and_plot_multiple_files(pattern):
 if __name__ == "__main__":
     # Update this pattern to match the location and file naming you use
     #pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_weak_energy\outputphasefieldweak_UP*.npz"
-    #pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_weak_displacement\outputphasefieldweak_UP*.npz"
-    pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Strong_displacement\outputphasefieldstrong_UP*.npz"
+    pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_weak_displacement\outputphasefieldweak_UP*.npz"
+    #pattern = r"E:\ETH\Master\25HS_MA\Data_Phasefield\PINN_Strong_displacement\outputphasefieldstrong_UP*.npz"
 
     # Load files and make plots
     load_and_plot_multiple_files(pattern)

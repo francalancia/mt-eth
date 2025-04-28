@@ -19,10 +19,10 @@ plt.rcParams.update({
     'figure.titlesize': 14        # Figure title
 })
 
-def exact_solution(y0,x):
+def exact_solution(y0,x,b):
     
     def heaviside(x):
-        return 1 if x >= 1.0 else 0
+        return 1 if x >= b else 0
     
     def system_heaviside(y,x):
         H = heaviside(x)
@@ -179,7 +179,7 @@ class FCN(nn.Module):
 
     def __init__(self, N_INPUT, N_OUTPUT, N_HIDDEN, N_LAYERS):
         super().__init__()
-        activation = nn.Sigmoid   
+        activation = nn.Tanh   
         self.fcs = nn.Sequential(*[nn.Linear(N_INPUT, N_HIDDEN), activation()])
         # creates identical hidden layers N_layers-1, fully connected with activation function
         self.fch = nn.Sequential(
@@ -214,7 +214,7 @@ class FCN(nn.Module):
         return 1 + coord*x
 
 def heaviside(x):
-        tensor = torch.where(x >= 1.0, torch.ones_like(x), torch.zeros_like(x))
+        tensor = torch.where(x >= 5.0, torch.ones_like(x), torch.zeros_like(x))
         return tensor
 def collocationpoints(total_values):
     nval1 = total_values // 5
@@ -231,177 +231,184 @@ def main():
     learning = True
     save = False
     show = True
-    heaviside_bool = False
+    heaviside_bool = True
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 32
+    n_hidden = 30
     n_layers = 2
-    n_epochs = 50000
-    k = 1000
-
-    pinn = FCN(n_input, n_output, n_hidden, n_layers)
+    n_epochs = 2500
+    k = 100
     tot_val_log = 701
-    tot_val = 191
-    # define collocation points
-    col_points2 = collocationpoints(tot_val_log)
-    col_points = np.linspace(0, 10, tot_val)
-    # exact solution
-    y0 = 1
-    f_x_exact = exact_solution(y0, col_points)
-    #f_x_exact = exact_solution(y0, col_points2)
-    #col_points = col_points2
-    #plt.figure(figsize=(10, 5))
-    #plt.plot(col_points, f_x_exact, label="Exact solution", color="red", alpha=1.0, linewidth=2)
-    if False:
-        col_exact = torch.linspace(0,5,tot_val)
-        col_exact2 = collocationpoints(tot_val_log)
-        f_x_exact = exact_solution(y0,col_exact)
-        f_x_exact2 = exact_solution(y0,col_exact2)
-        col_exact = col_exact.view(-1,1)
-        col_exact2 = col_exact2.view(-1,1)
-        f_x_exact = torch.from_numpy(f_x_exact)
-        f_x_exact2 = torch.from_numpy(f_x_exact2)
-    if False:
-        plt.figure(figsize=(8, 4))
-        plt.plot(col_exact, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-        plt.scatter(col_exact, torch.zeros_like(col_exact)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-        plt.plot(col_exact2, f_x_exact2, label="Exact solution", color="red", alpha=1.0, linewidth=2)
-        plt.scatter(col_exact2, torch.zeros_like(col_exact2)-0.1, label="Initial condition", color="red", alpha=1.0, linewidth=2)
-        plt.grid()
-        plt.show()
-    col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
+    tot_val = 102
+    listrun = np.array([30])
+    for index in range(listrun.shape[0]):
+        n_hidden = int(listrun[index])
+        pinn = FCN(n_input, n_output, n_hidden, n_layers)
+        # define collocation points
+        col_points2 = collocationpoints(tot_val_log)
+        col_points = np.linspace(0, 10, tot_val)
+        # exact solution
+        y0 = 1.0
+        x0 = 1.0
+        
+        f_x_exact = exact_solution(y0, col_points,x0)
+        #f_x_exact = exact_solution(y0, col_points2)
+        #col_points = col_points2
+        #plt.figure(figsize=(10, 5))
+        #plt.plot(col_points, f_x_exact, label="Exact solution", color="red", alpha=1.0, linewidth=2)
+        if False:
+            col_exact = torch.linspace(0,5,tot_val)
+            col_exact2 = collocationpoints(tot_val_log)
+            f_x_exact = exact_solution(y0,col_exact)
+            f_x_exact2 = exact_solution(y0,col_exact2)
+            col_exact = col_exact.view(-1,1)
+            col_exact2 = col_exact2.view(-1,1)
+            f_x_exact = torch.from_numpy(f_x_exact)
+            f_x_exact2 = torch.from_numpy(f_x_exact2)
+        if False:
+            plt.figure(figsize=(8, 4))
+            plt.plot(col_exact, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
+            plt.scatter(col_exact, torch.zeros_like(col_exact)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
+            plt.plot(col_exact2, f_x_exact2, label="Exact solution", color="red", alpha=1.0, linewidth=2)
+            plt.scatter(col_exact2, torch.zeros_like(col_exact2)-0.1, label="Initial condition", color="red", alpha=1.0, linewidth=2)
+            plt.grid()
+            plt.show()
+        col_points = torch.from_numpy(col_points).view(-1,1).requires_grad_(True)
+        """
+        if heaviside_bool:
+            heavyside = heaviside(col_points)
+        else:
+            jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
     """
-    if heaviside_bool:
-        heavyside = heaviside(col_points)
-    else:
-        jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
-   """
-    if heaviside_bool: 
-        heavyside = heaviside(col_points)
-    #solutions = []
-    optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-2, weight_decay=1e-5)
-    #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
-    """
-    optimiser = torch.optim.LBFGS(
-    pinn.parameters(),
-    lr=1e-6,            
-    max_iter=100, #prev 1000        
-    history_size=20000,    
-    tolerance_grad=1e-14,
-    tolerance_change=1e-16,
-    line_search_fn='strong_wolfe'
-    )
-    """
-    if learning:
-        def closure():
-            # zero the gradients
-            optimiser.zero_grad()
-            # compute model output for the collocation points
-            if heaviside_bool:
-                jump = heavyside
-            else:
-                jump = 1/(1 + torch.exp(-k*(col_points - 1.0)))
-            f_x =pinn(col_points)
-            # compute the grad of the output w.r.t. to the collocation points
-            df_xdx = torch.autograd.grad(
-                f_x, col_points, torch.ones_like(f_x), create_graph=True
-            )[0]
-            # compute the loss mean squared error
-            loss = torch.mean((df_xdx -(jump - f_x)) ** 2)
-            # backpropagate the loss
-            loss.backward()
-            # return the loss for the optimiser
-            return loss
-        with tqdm.trange(n_epochs) as pbar:
-            for _ in pbar:
-                loss = optimiser.step(closure)
-                """
+        if heaviside_bool: 
+            heavyside = heaviside(col_points)
+        #solutions = []
+        #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-2, weight_decay=1e-5)
+        #optimiser = torch.optim.AdamW(pinn.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
+        
+        optimiser = torch.optim.LBFGS(
+        pinn.parameters(),
+        lr=1e-6,            
+        max_iter=10000,        
+        history_size=20000,    
+        tolerance_grad=1e-12,
+        tolerance_change=1e-12,
+        line_search_fn='strong_wolfe'
+        )
+        
+        loss_history = []
+        loss_saveing = []
+        patience = 10
+        if learning:
+            def closure():
+                # zero the gradients
                 optimiser.zero_grad()
-                # compute loss%
-                f_x = pinn(col_points)
+                # compute model output for the collocation points
+                if heaviside_bool:
+                    jump = heavyside
+                else:
+                    jump = 1/(1 + torch.exp(-k*(col_points - x0)))
+                f_x =pinn(col_points)
+                # compute the grad of the output w.r.t. to the collocation points
                 df_xdx = torch.autograd.grad(
                     f_x, col_points, torch.ones_like(f_x), create_graph=True
-                )[
-                    0
-                ]  # (30, 1)
-                loss = torch.mean((df_xdx - 10*(-f_x+heavyside)) ** 2)
-                # backpropagate loss, take optimiser step
+                )[0]
+                # compute the loss mean squared error
+                loss = torch.mean((df_xdx -(jump - f_x)) ** 2)
+                # backpropagate the loss
                 loss.backward()
-                
-                optimiser.step()
-                
-                pbar.set_postfix(loss=f"{loss.item():.4e}")
-                """
-                #if _ % 10 == 0:
-                #    with torch.no_grad():
-                #        f_x = pinn(col_points)
-                #        solutions.append(f_x.detach().numpy())
-                
-                #optimiser.step()
-                pbar.set_postfix(loss=f"{loss.item():.4e}")
-    pinn.eval()
-    with torch.no_grad():
-        f_x = pinn(col_points)
-        #solutions.append(f_x.detach().numpy())
-    f_x_np = f_x.detach().numpy()
-    
-    l2_error = np.linalg.norm(f_x_exact - f_x_np)
-    # Plotting the analytical and PINN solution
-    fig = plt.figure(figsize=(10, 5))
-    plt.plot(col_points.detach().numpy(), f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
-    plt.plot(col_points.detach().numpy(), f_x_np, linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
-    plt.title(f"L2 error: {l2_error:.4e}")
-    plt.xlabel("x")
-    plt.ylabel("f(x)")
-    plt.grid(True)
-    plt.show()
-    
-    x_np = col_points.detach().numpy()
-    n_hidden_np = np.full(x_np.shape, n_hidden)
-    n_layers_np = np.full(x_np.shape, n_layers)
-    n_epochs_np = np.full(x_np.shape, n_epochs)
-    k_np = np.full(x_np.shape, k)
-    tot_val_np = np.full(x_np.shape, tot_val)
-    
-    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP_Heavi{heaviside_bool}_k{k}_Tanh_l2{l2_error}.npz"
-    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP_Heavi{heaviside_bool}_k{k}_Tanh_l2{l2_error}.csv"
-    
-    if heaviside_bool:
-        data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, tot_val_np])
-        np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, tot_val=tot_val_np)
-        np.savetxt(csv_path, data_to_save, delimiter=",", header="x,fx,n_h,n_l,n_e,tot_val", comments="")
-    else:
-        data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, k_np, tot_val_np])
-        np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, k =k_np, tot_val=tot_val_np)
-        np.savetxt(csv_path, data_to_save, delimiter=",", header="x,fx,n_h,n_l,n_e,k,tot_val", comments="")
-
-    print(f"Saved NPZ to: {npz_path}")
-    print(f"Saved CSV to: {csv_path}")
-
-    #create_animation(save, show,solutions, col_points, f_x_exact)
-
-    #l2 = plot_solution(save,show,pinn, col_points, f_x_exact, n_epochs)
-    #print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
-    if False:
-        x_values = np.linspace(0, 1, 4001)
-        y_values = np.vectorize(f)(x_values)
-        plt.plot(x_values, y_values, label='f(x)', color='blue')
-        plt.axvline(x=0.1, color='gray',label= 'step', linestyle='--')
-        plt.title(r'Solution of $ \frac{df}{dx} = 10*(H(x-0.1)-f(x))$, B.C. $f(0) = 1$')  
-        plt.xlabel('x')
-        plt.ylabel('f(x)')
+                # return the loss for the optimiser
+                return loss
+            with tqdm.trange(n_epochs) as pbar:
+                for _ in pbar:
+                    loss = optimiser.step(closure)
+                    """
+                    optimiser.zero_grad()
+                    # compute loss%
+                    f_x = pinn(col_points)
+                    df_xdx = torch.autograd.grad(
+                        f_x, col_points, torch.ones_like(f_x), create_graph=True
+                    )[
+                        0
+                    ]  # (30, 1)
+                    loss = torch.mean((df_xdx - 10*(-f_x+heavyside)) ** 2)
+                    # backpropagate loss, take optimiser step
+                    loss.backward()
+                    
+                    optimiser.step()
+                    
+                    pbar.set_postfix(loss=f"{loss.item():.4e}")
+                    """
+                    loss_history.append(loss)
+                    loss_saveing.append(loss.item())
+                    if len(loss_history) >= patience:
+                        # Check if the last 'patience' losses are the same
+                        if all(loss == loss_history[-1] for loss in loss_history[-patience:]):
+                            #print(f"Stopping early at epoch {n_epochs} as last {patience} losses are the same.")
+                            break
+                    #optimiser.step()
+                    pbar.set_postfix(loss=f"{loss.item():.4e}")
+        pinn.eval()
+        with torch.no_grad():
+            f_x = pinn(col_points)
+            #solutions.append(f_x.detach().numpy())
+        f_x_np = f_x.detach().numpy()
+        
+        l2_error = np.linalg.norm(f_x_exact - f_x_np)
+        # Plotting the analytical and PINN solution
+        
+        fig = plt.figure(figsize=(10, 5))
+        plt.plot(col_points.detach().numpy(), f_x_exact, label="Exact solution", color="black", alpha=1.0, linewidth=2)
+        plt.plot(col_points.detach().numpy(), f_x_np, linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
+        plt.title(f"L2 error: {l2_error:.4e}")
+        plt.xlabel("x")
+        plt.ylabel("f(x)")
         plt.grid(True)
-        plt.legend()
-        plt.savefig('ODE2_HBCanalytical.png')
         plt.show()
-    if False:
-        with open(f"E:/ETH/Master/25HS_MA/Data_ODE2/hyperparam_{timestamp}.txt","w") as file:
-            file.write(f"Hidden neurons: {n_hidden}")
-            file.write(f"Hidden layers: {n_layers}")
-            file.write(f"Collocation points: {tot_val}")
-            file.write(f"Training loss: {loss.item():.4e}")
-            file.write(f"L2 error: {l2}")
+        
+        x_np = col_points.detach().numpy()
+        n_hidden_np = np.full(x_np.shape, n_hidden)
+        n_layers_np = np.full(x_np.shape, n_layers)
+        n_epochs_np = np.full(x_np.shape, n_epochs)
+        k_np = np.full(x_np.shape, k)
+        tot_val_np = np.full(x_np.shape, tot_val)
+        
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_JUMP\BEST\New folder\PINN_ODE_JUMP{1}Tanh_H_{tot_val}_{n_hidden}_{n_layers}_{l2_error:.4e}_{x0}.npz"
+        
+        if heaviside_bool:
+            data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, tot_val_np])
+            #np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, tot_val=tot_val_np)
+        else:
+            data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, k_np, tot_val_np])
+            #np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, k =k_np, tot_val=tot_val_np)
+
+        #print(f"Saved NPZ to: {npz_path}")
+        #print(f"Saved CSV to: {csv_path}")
+
+        #create_animation(save, show,solutions, col_points, f_x_exact)
+
+        #l2 = plot_solution(save,show,pinn, col_points, f_x_exact, n_epochs)
+        #print(timestamp, f"{loss.item():.4e}",f"{l2.item():.4e}")
+        if False:
+            x_values = np.linspace(0, 1, 4001)
+            y_values = np.vectorize(f)(x_values)
+            plt.plot(x_values, y_values, label='f(x)', color='blue')
+            plt.axvline(x=0.1, color='gray',label= 'step', linestyle='--')
+            plt.title(r'Solution of $ \frac{df}{dx} = 10*(H(x-0.1)-f(x))$, B.C. $f(0) = 1$')  
+            plt.xlabel('x')
+            plt.ylabel('f(x)')
+            plt.grid(True)
+            plt.legend()
+            plt.savefig('ODE2_HBCanalytical.png')
+            plt.show()
+        if False:
+            with open(f"E:/ETH/Master/25HS_MA/Data_ODE2/hyperparam_{timestamp}.txt","w") as file:
+                file.write(f"Hidden neurons: {n_hidden}")
+                file.write(f"Hidden layers: {n_layers}")
+                file.write(f"Collocation points: {tot_val}")
+                file.write(f"Training loss: {loss.item():.4e}")
+                file.write(f"L2 error: {l2}")
         
     return None
 

@@ -489,12 +489,12 @@ class LagrKANNautoinner(torch.nn.Module):
         delta_x_2nd = delta_x**2
 
         phi_local_ikpj = self.lagrange(x_transformed, self.n_order)
-        dphi_local_ikpj = self.dlagrange(x_transformed, self.n_order)
-        ddphi_local_ikpj = self.ddlagrange(x_transformed, self.n_order)
+        #dphi_local_ikpj = self.dlagrange(x_transformed, self.n_order)
+        #ddphi_local_ikpj = self.ddlagrange(x_transformed, self.n_order)
 
         phi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
-        dphi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
-        ddphi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
+        #dphi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
+        #ddphi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
         for sample in range(self.n_samples):
             for dim in range(self.ndim_in):
                 for layer in range(self.n_width):
@@ -502,24 +502,24 @@ class LagrKANNautoinner(torch.nn.Module):
                         phi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
                             phi_local_ikpj[sample, layer, node, dim]
                         )
-                        dphi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
-                            dphi_local_ikpj[sample, layer, node, dim] / delta_x_1st
-                        )
-                        ddphi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
-                            ddphi_local_ikpj[sample, layer, node, dim] / delta_x_2nd
-                        )
+                        #dphi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
+                        #    dphi_local_ikpj[sample, layer, node, dim] / delta_x_1st
+                        #)
+                        #ddphi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
+                        #    ddphi_local_ikpj[sample, layer, node, dim] / delta_x_2nd
+                        #)
 
         t_ik = torch.einsum("kpj, ikpj -> ik", self.weight, phi_ikpj)
-        dt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, dphi_ikpj)
-        ddt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, ddphi_ikpj)
+        #dt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, dphi_ikpj)
+        #ddt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, ddphi_ikpj)
 
         return {
             "t_ik": t_ik,
-            "dt_ik": dt_ik,
-            "ddt_ik": ddt_ik,
+            #"dt_ik": dt_ik,
+            #"ddt_ik": ddt_ik,
             "phi_ikp": phi_ikpj,
-            "dphi_ikp": dphi_ikpj,
-            "ddphi_ikp": ddphi_ikpj,
+            #"dphi_ikp": dphi_ikpj,
+            #"ddphi_ikp": ddphi_ikpj,
             "delta_x": delta_x,
         }
 class LagrKANNautoouter(torch.nn.Module):
@@ -647,12 +647,12 @@ class LagrKANNautoouter(torch.nn.Module):
         delta_x_2nd = delta_x**2
 
         phi_local_ikp = self.lagrange(x_transformed, self.n_order)
-        dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
-        ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+        #dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
+        #ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
 
         phi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        #dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
+        #ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
 
         for sample in range(self.n_samples):
             for layer in range(self.n_width):
@@ -660,24 +660,24 @@ class LagrKANNautoouter(torch.nn.Module):
                     phi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
                         phi_local_ikp[sample, layer, node]
                     )
-                    dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        dphi_local_ikp[sample, layer, node] / delta_x_1st
-                    )
-                    ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        ddphi_local_ikp[sample, layer, node] / delta_x_2nd
-                    )
+                    #dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                    #    dphi_local_ikp[sample, layer, node] / delta_x_1st
+                    #)
+                    #ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
+                    #    ddphi_local_ikp[sample, layer, node] / delta_x_2nd
+                    #)
 
         t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_ikp)
-        dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
-        ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
+        #dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
+        #ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
 
         return {
             "t_ik": t_ik,
-            "dt_ik": dt_ik,
-            "ddt_ik": ddt_ik,
+            #"dt_ik": dt_ik,
+            #"ddt_ik": ddt_ik,
             "phi_ikp": phi_ikp,
-            "dphi_ikp": dphi_ikp,
-            "ddphi_ikp": ddphi_ikp,
+            #"dphi_ikp": dphi_ikp,
+            #"ddphi_ikp": ddphi_ikp,
             "delta_x": delta_x,
         }
 
@@ -1195,7 +1195,7 @@ def main():
                 for sample in range(n_samples):    
                     loss = 0  
                     x = model_input_i[sample,0].unsqueeze(0)
-                    j = model_input_i[sample,1].unsqueeze(0)
+                    j = 1/(1 + torch.exp(-k*(x - step_loc)))
                     if autodiff is True:
                         model_input = model_input_i[sample,:].unsqueeze(0)
                         y = y0 + x*(model(model_input,epoch_idx,sample))
@@ -1287,32 +1287,45 @@ def main():
     
     data[:,(n_epochs*Tot_runs)+(Tot_runs*2)+1] = y_hatvec
     dataGrad[:,(n_epochs*Tot_runs)+1] = dydy_hatvec
-    
+    ysave = y_hatvec.numpy()
     y_hatvec = y_hatvec.view(-1,1).numpy()
     dydy_hatvec = dydy_hatvec.view(-1,1).numpy()
     l2 = np.linalg.norm(y_i_sol - y_hatvec)
     print(f"L2-error: {l2.item():0.4e}")
     solutions[:,counter] = y_hatvec[:,0]
-    
+    """
     if log_fct:
         save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc_sol}log{k}"
         log_name = f"log{k}"
     else:
         save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc_sol}h"
         log_name = "H"
-
+    
     if enable_animation:
         create_animation(saveloc,save_name,save,show,solutions, x_i, y_i_sol,n_width, n_order, n_samples,n_epochs,y0,spacing,anim_intvl,step_loc_sol,log_name)
+    """
+    log_name = "empty"
+    save_name = "empty"
     plot_solution(saveloc,save_name,save,show,x_i,y_hatvec, y_i_sol, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str, step_loc_sol,log_name)
     plt.close('all')
-    
+    """
     data = data.detach().numpy()
     dataGrad = dataGrad.detach().numpy()
     if save: 
         np.savetxt(os.path.join(saveloc,f"data_{save_name}.csv"), data, delimiter=",",fmt='%1.3f')
         np.savetxt(os.path.join(saveloc,f"datagrad_{save_name}.csv"), dataGrad, delimiter=",",fmt='%1.3f')
         print("Data saved to csv file.")
-        
+    """   
+    x_np = x_i.detach().numpy()
+    y_np = ysave
+    
+    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_JUMP\PARAM\{0}PARAM{log_fct}_nw{n_width}_no{n_order}_ns{n_samples}_sp{spacing}_y{y0}_steploc{step_loc}_{k}sol2.npz"
+    if True:
+        np.savez(
+            npz_path,
+            x=x_np,
+            f_x=y_np,
+        )
         
     return None
 

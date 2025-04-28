@@ -74,13 +74,14 @@ def main():
     n_output = 2
     n_hidden = 50
     n_layers = 4
-    n_epochs = 2000
-    n_samples = 50
+    n_epochs = 6500
+    n_samples = 51
     x = torch.linspace(-0.5, 0.5, n_samples).reshape(-1, 1).requires_grad_()
     #x = torch.linspace(0, 1.0, n_samples).reshape(-1, 1).requires_grad_()
     U_p = 0.65
     
-    r_list = np.linspace(0, 1.0, 51)
+    #r_list = np.linspace(0.0, 0.8, 81)
+    r_list = np.array([0.65])
     for index in range(r_list.shape[0]):
         U_p = r_list[index]
         #pinn = FCN(n_input, n_output, n_hidden, n_layers)
@@ -118,13 +119,13 @@ def main():
         )
         """
         #optimiser = torch.optim.LBFGS(pinn.parameters(), lr = 1e-4)
-        optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-7, step_sizes=(1e-10, 50))
+        optimiser = torch.optim.Rprop(pinn.parameters(), lr=1e-9, step_sizes=(1e-12, 50))
 
         l = 0.05
         cw = 8.0/3.0
         weight_decay = 1e-5
         tol_ir = 5e-3
-        penalty = (27/(64*tol_ir**2))
+        penalty = 20*(27/(64*tol_ir**2))
         
         def closure():
             # zero the gradients
@@ -161,9 +162,9 @@ def main():
             #loss_energy = torch.log10(energy_tot)
             # Weight regularization: L2 penalty over all parameters
             
-            #l2_reg = 0.0
-            #for param in pinn.parameters():
-            #    l2_reg += torch.sum(param ** 2)
+            l2_reg = 0.0
+            for param in pinn.parameters():
+                l2_reg += torch.sum(param ** 2)
                 
             loss = loss_energy #+ weight_decay * l2_reg
             
@@ -196,7 +197,7 @@ def main():
         e_el = torch.mean(energy_elastic)
         e_dam = torch.mean(energy_damage)
             
-
+        
         fig, axs = plt.subplots(1, 3, figsize=(10, 4))
         axs[0].plot(x.detach().numpy(), u.detach().numpy(), label="u")
         axs[0].set_xlabel("x")
@@ -223,7 +224,7 @@ def main():
         print(f"Elastic Energy: {e_el.item()}")
         print(f"Damage Energy: {e_dam.item()}")
         plt.tight_layout()
-        #plt.show()
+        plt.show()
         
         x_np = x.detach().cpu().numpy()
         u_np = u.detach().cpu().numpy()
@@ -232,19 +233,19 @@ def main():
         e_dam_np = energy_damage.detach().cpu().numpy()
 
         # Use f-strings to incorporate 'my_var' into the filenames
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSELOSS\outputphasefieldweak_UP{U_p}.npz"
-        csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSELOSS\outputphasefieldweak_UP{U_p}.csv"
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSE101\outputphasefieldweak_UP{U_p}_2.npz"
+        #csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSELOSS\outputphasefieldweak_UP{U_p}.csv"
 
         # Save to NPZ
         np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
 
         # Optionally also save as CSV
         data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])
-        np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha", comments="")
+        #np.savetxt(csv_path, data_to_save, delimiter=",", header="x,u,alpha", comments="")
 
         print(f"Saved NPZ to: {npz_path}")
-        print(f"Saved CSV to: {csv_path}")
-        U_p = U_p + 0.01
+        #print(f"Saved CSV to: {csv_path}")
+        #U_p = U_p + 0.01
     return None
 
 
