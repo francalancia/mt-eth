@@ -1072,6 +1072,7 @@ def save_excel(values, autodiff, regression, speedup, prestop):
 
 def main():
     """Execute main routine."""
+    # Import the parameters from the parameters file
     n_width = parameters.n_width
     n_order = parameters.n_order
     n_samples = parameters.n_samples
@@ -1084,7 +1085,10 @@ def main():
     prestop = parameters.prestop
     save = parameters.save
     
+    # define the number of elements
     n_elements = int((n_samples - 2) / n_order)
+    
+    # Create holder tensors for the results
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
@@ -1140,11 +1144,9 @@ def main():
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
                 loss_epoch = torch.zeros((n_samples,))
-                # start looping over each training sample (50 times (0-49))
+                # Start looping over all the number of samples / collocation points
                 for sample in range(n_samples):
-
                     x = x_i[sample].unsqueeze(-1)
-
                     if regression is True:
                         if autodiff is True:
                             y = model(x,_,sample)
@@ -1153,6 +1155,7 @@ def main():
                             with torch.no_grad():
                                 system = model.linear_system(x, y_i[sample],_,sample)
                                 A_inner, A_outer, residual = system["A_inner"], system["A_outer"], system["b"]
+                    # The ODE case
                     else:
                         if autodiff is True:
                             y = (1 + x * model(x,_,sample))
@@ -1169,8 +1172,8 @@ def main():
 
                     loss = torch.mean(torch.square(residual))
 
+                    # Calculate the gradients for the Newton-Kaczmarz update
                     if autodiff is True:
-                        
                         g_lst = torch.autograd.grad(
                             outputs=residual,
                             inputs=model.parameters(),
@@ -1228,7 +1231,7 @@ def main():
         print(f"L2-error: {l2.item():0.4e}")
         l2 = l2.detach().numpy()
         #create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
-        #plot_solution(save,x_i, y_hat, y_i, l2)
+        plot_solution(save,x_i, y_hat, y_i, l2)
         
         loss_history = np.array(loss_history)
         
@@ -1242,9 +1245,9 @@ def main():
         epochs_used = np.full(x_np.shape, _)
         loss_mean = np.full(x_np.shape, loss_mean.item())
         l2 = np.full(x_np.shape, l2.item())
-        
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\best\KANN_ODE_nw{n_width}_no{n_order}_ns{n_samples}_mu{mu}.npz"
-        np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_history = loss_history, l2 = l2)
+        if save:
+            npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\best\KANN_ODE_nw{n_width}_no{n_order}_ns{n_samples}_mu{mu}.npz"
+            np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_history = loss_history, l2 = l2)
 
     
     return None

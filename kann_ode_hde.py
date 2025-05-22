@@ -1068,7 +1068,6 @@ def main():
     saveloc = parameters_ode.saveloc
     interval1 = parameters_ode.animation_interval
     
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     loss_history = []
     #rlist = np.array([1,5,10,25,50,100,200])
     rlist = np.array([1.0])
@@ -1147,6 +1146,7 @@ def main():
                 for sample in range(n_samples):    
                     loss = 0  
                     x = x_i[sample].unsqueeze(-1)
+                    # To be inside of the compuational graph the values of the logistic function must be calculated here
                     if log_fct:
                         j = 1/(1 + torch.exp(-k*(x - step_loc)))
                     else:
@@ -1226,8 +1226,13 @@ def main():
         print(f"L2-error: {l2.item():0.4e}")
         #solutions = np.hstack([solutions, y_hatvec])
         
+        # If one wants to save the animation of the learning process, uncomment the line below
         #create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing,x_max,interval1)
-        error_abs = plot_solution(saveloc,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str)
+        
+        # If one wants to directly plot the final solution, uncomment the line below
+        #error_abs = plot_solution(saveloc,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str)
+        
+        # Transfomring the data to numpy arrays for saving, which then can be used for plotting
         loss_history = np.array(loss_history)
         x_np = x_i.detach().numpy()
         y_np = y_hatvec2.detach().numpy()
@@ -1242,7 +1247,7 @@ def main():
         loss_mean_np = np.full(x_np.shape, loss_mean.item())
 
         npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_JUMP\BEST\{index}KANN_ODE_DISC_LOGFCT{log_fct}_nw{n_width}_no{n_order}_ns{n_samples}_sp{spacing}_y{y0}_steploc{step_loc}_{k}_RUN.npz"
-        if True:
+        if False:
             np.savez(
                 npz_path,
                 x=x_np,

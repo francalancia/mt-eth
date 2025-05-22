@@ -126,7 +126,7 @@ def main():
         weight_decay = 1e-5
         tol_ir = 5e-3
         penalty = 20*(27/(64*tol_ir**2))
-        
+        loss_history = []
         def closure():
             # zero the gradients
             optimiser.zero_grad()
@@ -175,6 +175,7 @@ def main():
         with tqdm.trange(n_epochs) as pbar:
             for _ in pbar:
                 loss = optimiser.step(closure)
+                loss_history.append(loss.item())
                 pbar.set_postfix(loss=f"{loss.item():.4e}")
                     
         pinn.eval()
@@ -231,13 +232,13 @@ def main():
         alpha_np = alpha.detach().cpu().numpy()
         e_el_np = energy_elastic.detach().cpu().numpy()
         e_dam_np = energy_damage.detach().cpu().numpy()
-
+        loss_history_np = np.array(loss_history)
         # Use f-strings to incorporate 'my_var' into the filenames
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSE101\outputphasefieldweak_UP{U_p}_2.npz"
+        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSE101\outputphasefieldweak_UP{U_p}_4.npz"
         #csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_PHASEFIELD\WeakMSELOSS\outputphasefieldweak_UP{U_p}.csv"
 
         # Save to NPZ
-        np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np)
+        np.savez(npz_path, x=x_np, u=u_np, alpha=alpha_np, e_el=e_el_np, e_dam=e_dam_np, loss_history=loss_history_np)
 
         # Optionally also save as CSV
         data_to_save = np.hstack([x_np, u_np, alpha_np, e_el_np, e_dam_np])

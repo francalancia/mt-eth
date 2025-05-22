@@ -1190,6 +1190,7 @@ def main():
         for epoch_idx in pbar1:
             loss_epoch = torch.zeros((n_samples,))
             for batch in range(Tot_runs):
+                # Eigher choose the input as being shuffled or not
                 #model_input_i = model_input_big[n_samples*batch : n_samples*(batch+1), :]
                 model_input_i = shuffled_vector[n_samples*batch : n_samples*(batch+1), :]
                 for sample in range(n_samples):    

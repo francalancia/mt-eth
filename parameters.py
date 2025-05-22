@@ -1,7 +1,7 @@
-n_width = 5
+n_width = 1
 n_order = 1
-n_samples = 102
-n_epochs = 30000
+n_samples = 10
+n_epochs = 100
 tol = 1e-32
 autodiff = False
 regression = False
