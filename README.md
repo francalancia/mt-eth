@@ -22,4 +22,4 @@ and can be installed via pip:
 pip install -r requirements.pip
 ```
 # Bugs
-Currently in Branch Speedup from line 301 - 317. Speedup for automatic differentiation for the ODE
+The speedup of using cached values for the inner basis function only works for manual differentiation, as pytorch uses dynamical computational graph creation. This is for all the different problem cases.
