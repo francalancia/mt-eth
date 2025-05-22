@@ -102,9 +102,17 @@ class FCN(nn.Module):
                 for _ in range(N_LAYERS - 1)
             ]
         )
+        
+        self.apply(self._init_weights)
         self.fce = nn.Linear(N_HIDDEN, N_OUTPUT)
         total_params = sum(p.numel() for p in self.parameters())
         print(f"Total number of parameters: {total_params}")
+        
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight, gain = 1.0)
+            #nn.init.zeros_(m.weight)
+            nn.init.zeros_(m.bias)
 
     def forward(self, x):
         coord = x
@@ -112,44 +120,40 @@ class FCN(nn.Module):
         x = self.fch(x)
         x = self.fce(x)
 
-        """
-        # we calculate the networks output for x = 0 and then use that to subract it from the real networks output
-        x0 = torch.zeros_like(x)
-        x0 = self.fcs(x0)
-        x0 = self.fch(x0)
-        x0 = self.fce(x0)
-        """
         return 1 + (coord * (x))
 
 def main():
-    save = True
-    show = False
+    save = False
+    show = True
     # define neural network to train
     n_input = 1
     n_output = 1
-    n_hidden = 24
-    n_layers = 2
-    n_epochs = 1000
-
+    n_hidden = 16
+    n_layers = 6
+    n_epochs = 20000
+    tot_val = 50
     pinn = FCN(n_input, n_output, n_hidden, n_layers)
 
     # define collocation points
-    col_points = torch.linspace(0, 1, 60).view(-1, 1).requires_grad_(True)
+    col_points = torch.linspace(0, 1, tot_val).view(-1, 1).requires_grad_(True)
 
     # exact solution
-    col_exact = torch.linspace(0, 1, 60).view(-1, 1)
+    col_exact = torch.linspace(0, 1, tot_val).view(-1, 1)
     f_x_exact = exact_solution(col_exact)
 
     #optimiser = torch.optim.AdamW(pinn.parameters(), lr=1e-3)
     optimiser = torch.optim.LBFGS(
     pinn.parameters(),
-    lr=1e-01,            
-    max_iter=1000,        
-    history_size=150,    
-    tolerance_grad=1e-14,
-    tolerance_change=1e-16,
+    lr=1e-6,            
+    max_iter=10000,        
+    history_size=20000,    
+    tolerance_grad=1e-18,
+    tolerance_change=1e-20,
     line_search_fn='strong_wolfe'
     )
+    loss_history = []
+    loss_saveing = []
+    patience = 10
     solutions = []
     def closure():
         # zero the gradients
@@ -187,20 +191,45 @@ def main():
             #optimiser.step()
             
             pbar.set_postfix(loss=f"{loss.item():.4e}")
-            if _ % 10 == 0:
-                with torch.no_grad():
-                    f_x = pinn(col_points)
-                    solutions.append(f_x.detach().numpy())
+            #if _ % 10 == 0:
+            #    with torch.no_grad():
+            #        f_x = pinn(col_points)
+            #        solutions.append(f_x.detach().numpy())
+            loss_history.append(loss)
+            loss_saveing.append(loss.item())
+            if len(loss_history) >= patience:
+                # Check if the last 'patience' losses are the same
+                if all(loss == loss_history[-1] for loss in loss_history[-patience:]):
+                    print(f"Stopping early at epoch {n_epochs} as last {patience} losses are the same.")
+                    break
     pinn.eval()
     with torch.no_grad():
         f_x = pinn(col_points)
-        solutions.append(f_x.detach().numpy())
+        #solutions.append(f_x.detach().numpy())
 
-    create_animation(save,show, solutions, col_points, f_x_exact)
+    #create_animation(save,show, solutions, col_points, f_x_exact)
     plot_solution(pinn, col_points, col_exact, f_x_exact, n_epochs,save,show)
     
+    f_x_np = f_x.detach().numpy()
+    l2_error = np.linalg.norm(f_x_exact - f_x_np)
+    loss_saveing = np.array(loss_saveing)
     
+    x_np = col_points.detach().numpy()
+    n_hidden_np = np.full(x_np.shape, n_hidden)
+    n_layers_np = np.full(x_np.shape, n_layers)
+    n_epochs_np = np.full(x_np.shape, n_epochs)
+    tot_val_np = np.full(x_np.shape, tot_val)
     
+    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE\layer\PINN_ODE6_l{l2_error}_{n_epochs}_l{n_layers}_nh{n_hidden}_nc{tot_val}.npz"
+    csv_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\PINN_ODE_l2{l2_error}.csv"
+    
+    #data_to_save = np.hstack([x_np, f_x_np, n_hidden_np, n_layers_np, n_epochs_np, tot_val_np])
+    np.savez(npz_path, x=x_np, f_x=f_x_np, n_hidden=n_hidden_np, n_layers=n_layers_np, n_epochs=n_epochs_np, tot_val=tot_val_np, loss_history = loss_saveing)
+    #np.savetxt(csv_path, data_to_save, delimiter=",", header="x,fx,n_h,n_l,n_e,tot_val", comments="")
+
+
+    #print(f"Saved NPZ to: {npz_path}")
+    #print(f"Saved CSV to: {csv_path}")
     
     return None
 

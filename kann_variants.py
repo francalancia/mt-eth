@@ -1072,6 +1072,7 @@ def save_excel(values, autodiff, regression, speedup, prestop):
 
 def main():
     """Execute main routine."""
+    # Import the parameters from the parameters file
     n_width = parameters.n_width
     n_order = parameters.n_order
     n_samples = parameters.n_samples
@@ -1084,15 +1085,24 @@ def main():
     prestop = parameters.prestop
     save = parameters.save
     
-    # why does number of elements change?
+    # define the number of elements
     n_elements = int((n_samples - 2) / n_order)
+    
+    # Create holder tensors for the results
     values = torch.zeros((runs, 9))
     loss_tracking = torch.zeros((int(n_epochs / 10 + 2),2))
     rval = 0
-    
-    for run in range(runs):
+    n_width_list = np.array([1.0])
+    patience = 10
+    mu = 1
+    for index in range(n_width_list.shape[0]):
+        loss_history = []
+        loss_stop = []
+        mu = n_width_list[index]
+        n_elements = int((n_samples - 2) / n_order)
+        #print(n_width)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        print(f"\nrun at iteration {run+1}")
+        print(f"\nrun at iteration {index+1}")
         same_loss_counter = 0
         previous_loss = 0
 
@@ -1130,16 +1140,13 @@ def main():
             autodiff=autodiff,
             speedup=speedup
         )
-        solutions = np.empty((n_samples,1))
         with tqdm.trange(n_epochs) as pbar1:
             for _ in pbar1:
                 lr_epoch = torch.zeros((n_samples,))
                 loss_epoch = torch.zeros((n_samples,))
-                # start looping over each training sample (50 times (0-49))
+                # Start looping over all the number of samples / collocation points
                 for sample in range(n_samples):
-
                     x = x_i[sample].unsqueeze(-1)
-
                     if regression is True:
                         if autodiff is True:
                             y = model(x,_,sample)
@@ -1148,6 +1155,7 @@ def main():
                             with torch.no_grad():
                                 system = model.linear_system(x, y_i[sample],_,sample)
                                 A_inner, A_outer, residual = system["A_inner"], system["A_outer"], system["b"]
+                    # The ODE case
                     else:
                         if autodiff is True:
                             y = (1 + x * model(x,_,sample))
@@ -1164,18 +1172,12 @@ def main():
 
                     loss = torch.mean(torch.square(residual))
 
+                    # Calculate the gradients for the Newton-Kaczmarz update
                     if autodiff is True:
-                        
                         g_lst = torch.autograd.grad(
                             outputs=residual,
                             inputs=model.parameters(),
                         )
-                        """
-                        g_lst = torch.autograd.grad(
-                            outputs=loss,
-                            inputs=model.parameters(),
-                        )
-                        """
                         norm = torch.linalg.norm(torch.hstack(g_lst)) ** 2
                     else:
                         g_lst = [A_inner, A_outer]
@@ -1187,7 +1189,7 @@ def main():
                     
                     # Kaczmarz update
                     for p, g in zip(model.parameters(), g_lst):
-                        update = 1.2*(residual / norm) * torch.squeeze(g)
+                        update = mu*(residual / norm) * torch.squeeze(g)
                         #update = 1e-3 * torch.squeeze(g)
                         p.data -= update
 
@@ -1197,40 +1199,18 @@ def main():
 
                 loss_mean = torch.mean(loss_epoch)
                 loss_str = f"{loss_mean.item():0.4e}"
-
+                loss_val = loss_mean.item()
                 pbar1.set_postfix(loss=loss_str)
-                if loss_mean.item() >= previous_loss:
-                    same_loss_counter += 1
-                else:
-                    same_loss_counter = 0
+                loss_history.append(loss_val)     # store float for saving later
+                loss_stop.append(loss_val)        # float for rounding comparison
 
-                previous_loss = loss_mean.item()
-                if prestop:
-                    if same_loss_counter >= 40:
-                        values[run, 6] = pbar1.format_dict["elapsed"]
-                        break
-                
-                if loss_mean.item() <= tol:
-                    values[run, 6] = pbar1.format_dict["elapsed"]
-                    break
+                if len(loss_stop) >= patience:
+                    recent_losses = [round(l, 12) for l in loss_stop[-patience:]]
+                    if all(l == recent_losses[-1] for l in recent_losses):
+                        print(f"Stopping early at epoch {_} as last {patience} losses are the same (rounded to 6 digits).")
+                        break   
                 Tickrate = pbar1.format_dict['rate']
                 
-                if _ == 0 or _ % 100 == 0:
-                    loss_tracking[rval,0] = _
-                    loss_tracking[rval,1] = loss_mean
-                    rval += 1
-                if _ % 100 == 0:
-                    vec = torch.zeros_like(x_i)
-                    for sample in range(n_samples):
-                        x = x_i[sample].unsqueeze(-1)
-                        vec[sample] = 1 + x * model(x,_,sample)
-                    vec = vec.detach().numpy().reshape(-1,1)
-                    if _ == 0:
-                        solutions = vec
-                    else:
-                        solutions = np.hstack([solutions, vec])
-        loss_tracking[rval,0] = _
-        loss_tracking[rval,1] = loss_mean
             
         print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
         if same_loss_counter > 20:
@@ -1249,26 +1229,26 @@ def main():
         
         l2 = torch.linalg.norm(y_i - y_hat)
         print(f"L2-error: {l2.item():0.4e}")
-        # how many samples, width, order, tol, l2-error,  which epoch, runtinme
-        values[run, 0] = n_samples
-        values[run, 1] = n_width
-        values[run, 2] = n_order
-        values[run, 3] = tol
-        values[run, 4] = loss_mean
-        values[run, 5] = l2
-        values[run, 6] = _
-        values[run, 7] = pbar1.format_dict["elapsed"]
-        #values[run, 8] = Tickrate
-        #n_samples = n_samples + 5
+        l2 = l2.detach().numpy()
+        #create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
+        plot_solution(save,x_i, y_hat, y_i, l2)
+        
+        loss_history = np.array(loss_history)
+        
+        x_np = x_i.detach().numpy()
+        y_np = y_hat.detach().numpy()
+        n_width_np = np.full(x_np.shape, n_width)
+        n_order_np = np.full(x_np.shape, n_order)
+        n_samples_np = np.full(x_np.shape, n_samples)
+        n_epochs_np = np.full(x_np.shape, n_epochs)
+        time = np.full(x_np.shape, pbar1.format_dict['elapsed'])
+        epochs_used = np.full(x_np.shape, _)
+        loss_mean = np.full(x_np.shape, loss_mean.item())
+        l2 = np.full(x_np.shape, l2.item())
+        if save:
+            npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE\best\KANN_ODE_nw{n_width}_no{n_order}_ns{n_samples}_mu{mu}.npz"
+            np.savez(npz_path, x=x_np, f_x=y_np, n_width=n_width_np, n_order=n_order_np, n_epochs=n_epochs_np, tot_val=n_samples_np, runtime = time, epochs_used = epochs_used, loss_history = loss_history, l2 = l2)
 
-    y_hat2 = y_hat.detach().numpy().reshape(-1,1)
-    solutions = np.hstack([solutions, y_hat2])
-    l2 = l2.detach().numpy()
-    create_animation(save,model,solutions, x_i, y_i,timestamp, interval = 100)
-    plot_solution(save,x_i, y_hat, y_i, l2)
-    if False:
-        save_excel(values, autodiff, regression, speedup, prestop)
-        save_excel(loss_tracking, autodiff, regression, speedup, prestop)
     
     return None
 

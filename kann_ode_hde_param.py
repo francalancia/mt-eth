@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.init as init
 import tqdm
-import parameters_ode
+import parameters_ode_param
 import pandas as pd
 import numpy as np
 import os
@@ -28,7 +28,7 @@ plt.rcParams.update({
 class LagrangeKANNmaninner(torch.nn.Module):
     """A KANN layer using n-th order Lagrange polynomials."""
 
-    def __init__(self, n_width, n_order, n_elements, n_collocation,n_samples, x_min, x_max):
+    def __init__(self, n_width, n_order, n_elements, n_collocation,n_samples, x_min, x_max,ndim_in):
         """Initialize."""
         super(LagrangeKANNmaninner, self).__init__()
         self.n_width = n_width
@@ -39,14 +39,15 @@ class LagrangeKANNmaninner(torch.nn.Module):
         self.n_samples = n_samples
         self.x_min = x_min
         self.x_max = x_max
+        self.ndim_in = ndim_in
 
         self.weight = torch.nn.parameter.Parameter(
-            torch.zeros((self.n_width, self.n_nodes))
+            torch.zeros((self.n_width, self.n_nodes,ndim_in))
         )
-        #init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
-        self.phi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
-        self.dphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
-        self.ddphi_ikp_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes))
+
+        self.phi_ikpj_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes,ndim_in))
+        self.dphi_ikpj_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes,ndim_in))
+        self.ddphi_ikpj_inner = torch.zeros((self.n_collocation, self.n_width, self.n_nodes,ndim_in))
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
@@ -57,15 +58,16 @@ class LagrangeKANNmaninner(torch.nn.Module):
                 x.shape[0],
                 x.shape[1],
                 n_order + 1,
+                x.shape[2],
             )
         )
-
-        for j in range(n_order + 1):
-            p = 1.0
-            for m in range(n_order + 1):
-                if j != m:
-                    p *= (x - nodes[m]) / (nodes[j] - nodes[m])
-            p_list[:, :, j] = p
+        for i in range(self.ndim_in):
+            for j in range(n_order + 1):
+                p = 1.0
+                for m in range(n_order + 1):
+                    if j != m:
+                        p *= (x[:,:,i] - nodes[m]) / (nodes[j] - nodes[m])
+                p_list[:, :, j,i] = p
 
         return p_list
 
@@ -78,19 +80,20 @@ class LagrangeKANNmaninner(torch.nn.Module):
                 x.shape[0],
                 x.shape[1],
                 n_order + 1,
+                x.shape[2],
             )
         )
-
-        for j in range(n_order + 1):
-            y = 0.0
-            for i in range(n_order + 1):
-                if i != j:
-                    k = torch.ones_like(x) / (nodes[j] - nodes[i])
-                    for m in range(n_order + 1):
-                        if m != i and m != j:
-                            k *= (x - nodes[m]) / (nodes[j] - nodes[m])
-                    y += k
-            dp_list[:, :, j] = y
+        for h in range(self.ndim_in):
+            for j in range(n_order + 1):
+                y = 0.0
+                for i in range(n_order + 1):
+                    if i != j:
+                        k = torch.ones_like(x[:,:,h]) / (nodes[j] - nodes[i])
+                        for m in range(n_order + 1):
+                            if m != i and m != j:
+                                k *= (x[:,:,h] - nodes[m]) / (nodes[j] - nodes[m])
+                        y += k
+            dp_list[:, :, j,h] = y
 
         return dp_list
 
@@ -103,23 +106,24 @@ class LagrangeKANNmaninner(torch.nn.Module):
                 x.shape[0],
                 x.shape[1],
                 n_order + 1,
+                x.shape[2],
             )
         )
-
-        for j in range(n_order + 1):
-            y = 0.0
-            for i in range(n_order + 1):
-                if i != j:
-                    k_sum = 0.0
-                    for m in range(n_order + 1):
-                        if m != i and m != j:
-                            k_prod = torch.ones_like(x) / (nodes[j] - nodes[m])
-                            for n in range(n_order + 1):
-                                if n != i and n != j and n != m:
-                                    k_prod *= (x - nodes[n]) / (nodes[j] - nodes[n])
-                            k_sum += k_prod
-                    y += (1 / (nodes[j] - nodes[i])) * k_sum
-            ddp_list[:, :, j] = y
+        for h in range(self.ndim_in):
+            for j in range(n_order + 1):
+                y = 0.0
+                for i in range(n_order + 1):
+                    if i != j:
+                        k_sum = 0.0
+                        for m in range(n_order + 1):
+                            if m != i and m != j:
+                                k_prod = torch.ones_like(x[:,:,h]) / (nodes[j] - nodes[m])
+                                for n in range(n_order + 1):
+                                    if n != i and n != j and n != m:
+                                        k_prod *= (x[:,:,h] - nodes[n]) / (nodes[j] - nodes[n])
+                                k_sum += k_prod
+                        y += (1 / (nodes[j] - nodes[i])) * k_sum
+                ddp_list[:, :, j,h] = y
 
         return ddp_list
 
@@ -135,9 +139,12 @@ class LagrangeKANNmaninner(torch.nn.Module):
     def forward(self, x, _, sample):
         if _ == 0:
             """Forward pass for whole batch."""
-            if len(x.shape) != 2:
-                x = x.unsqueeze(-1)
-                x = torch.repeat_interleave(x, self.n_width, -1)
+            if len(x.shape) != self.ndim_in:
+                raise SystemExit("Check the dimensions of the input")
+            #if len(x.shape) != 2:
+            #    x = x.unsqueeze(-1)
+            #    x = torch.repeat_interleave(x, self.n_width, -1)
+            x = x.unsqueeze(1).repeat(1, self.n_width, 1)
             x_shift = self.to_shift(x)
 
             id_element_in = torch.floor(x_shift / self.n_order)
@@ -155,38 +162,38 @@ class LagrangeKANNmaninner(torch.nn.Module):
             delta_x_1st = self.delta_x_inner
             delta_x_2nd = self.delta_x_inner**2
 
-            phi_local_ikp = self.lagrange(x_transformed, self.n_order)
-            dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
-            ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
-
-            for layer in range(self.n_width):
-                for node in range(self.n_order + 1):
-                    self.phi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        phi_local_ikp[0, layer, node]
-                    )
-                    self.dphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        dphi_local_ikp[0, layer, node] / delta_x_1st
-                    )
-                    self.ddphi_ikp_inner[sample, layer, nodes_in_l[0, layer] + node] = (
-                        ddphi_local_ikp[0, layer, node] / delta_x_2nd
-                    )
+            phi_local_ikpj = self.lagrange(x_transformed, self.n_order)
+            dphi_local_ikpj = self.dlagrange(x_transformed, self.n_order)
+            ddphi_local_ikpj = self.ddlagrange(x_transformed, self.n_order)
+            for dim in range (self.ndim_in):
+                for layer in range(self.n_width):
+                    for node in range(self.n_order + 1):
+                        self.phi_ikpj_inner[sample, layer, nodes_in_l[0, layer] + node,dim] = (
+                            phi_local_ikpj[0, layer, node,dim]
+                        )
+                        self.dphi_ikpj_inner[sample, layer, nodes_in_l[0, layer] + node,dim] = (
+                            dphi_local_ikpj[0, layer, node,dim] / delta_x_1st
+                        )
+                        self.ddphi_ikpj_inner[sample, layer, nodes_in_l[0, layer] + node,dim] = (
+                            ddphi_local_ikpj[0, layer, node,dim] / delta_x_2nd
+                        )
          
         with torch.no_grad():
-            phi_cut = self.phi_ikp_inner[sample:(sample+1), :, :]
-            dphi_cut = self.dphi_ikp_inner[sample:(sample+1), :, :]
-            ddphi_cut = self.ddphi_ikp_inner[sample:(sample+1), :, :]
+            phi_cut = self.phi_ikpj_inner[sample:(sample+1), :, :,:]
+            dphi_cut = self.dphi_ikpj_inner[sample:(sample+1), :, :,:]
+            ddphi_cut = self.ddphi_ikpj_inner[sample:(sample+1), :, :,:]
 
-        t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_cut)
-        dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_cut)
-        ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_cut)
+        t_ik = torch.einsum("kpj, ikpj -> ik", self.weight, phi_cut)
+        dt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, dphi_cut)
+        ddt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, ddphi_cut)
 
         return {
             "t_ik": t_ik,
             "dt_ik": dt_ik,
             "ddt_ik": ddt_ik,
-            "phi_ikp": self.phi_ikp_inner,
-            "dphi_ikp": self.dphi_ikp_inner,
-            "ddphi_ikp": self.ddphi_ikp_inner,
+            "phi_ikp": self.phi_ikpj_inner,
+            "dphi_ikp": self.dphi_ikpj_inner,
+            "ddphi_ikp": self.ddphi_ikpj_inner,
             "delta_x": self.delta_x_inner,
         }       
 class LagrangeKANNmanouter(torch.nn.Module):
@@ -365,28 +372,29 @@ class LagrKANNautoinner(torch.nn.Module):
         self.ndim_in = ndim_in
 
         self.weight = torch.nn.parameter.Parameter(
-            torch.zeros((self.n_width, self.n_nodes))
+            torch.zeros((self.n_width, self.n_nodes,self.ndim_in))
         )
-        #init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
 
     def lagrange(self, x, n_order):
         """Lagrange polynomials."""
+        #stays the same
         nodes = torch.linspace(-1.0, 1.0, n_order + 1)
-
+        # needs extra dimension for parameter
         p_list = torch.zeros(
             (
                 x.shape[0],
                 x.shape[1],
                 n_order + 1,
+                x.shape[2],
             )
         )
-
-        for j in range(n_order + 1):
-            p = 1.0
-            for m in range(n_order + 1):
-                if j != m:
-                    p *= (x - nodes[m]) / (nodes[j] - nodes[m])
-            p_list[:, :, j] = p
+        for i in range(self.ndim_in):
+            for j in range(n_order + 1):
+                p = 1.0
+                for m in range(n_order + 1):
+                    if j != m:
+                        p *= (x[:,:,i] - nodes[m]) / (nodes[j] - nodes[m])
+                p_list[:, :, j,i] = p
 
         return p_list
 
@@ -399,19 +407,20 @@ class LagrKANNautoinner(torch.nn.Module):
                 x.shape[0],
                 x.shape[1],
                 n_order + 1,
+                x.shape[2],
             )
         )
-
-        for j in range(n_order + 1):
-            y = 0.0
-            for i in range(n_order + 1):
-                if i != j:
-                    k = torch.ones_like(x) / (nodes[j] - nodes[i])
-                    for m in range(n_order + 1):
-                        if m != i and m != j:
-                            k *= (x - nodes[m]) / (nodes[j] - nodes[m])
-                    y += k
-            dp_list[:, :, j] = y
+        for h in range(self.ndim_in):
+            for j in range(n_order + 1):
+                y = 0.0
+                for i in range(n_order + 1):
+                    if i != j:
+                        k = torch.ones_like(x[:,:,h]) / (nodes[j] - nodes[i])
+                        for m in range(n_order + 1):
+                            if m != i and m != j:
+                                k *= (x[:,:,h] - nodes[m]) / (nodes[j] - nodes[m])
+                        y += k
+                dp_list[:, :, j,h] = y
 
         return dp_list
 
@@ -424,23 +433,24 @@ class LagrKANNautoinner(torch.nn.Module):
                 x.shape[0],
                 x.shape[1],
                 n_order + 1,
+                x.shape[2],
             )
         )
-
-        for j in range(n_order + 1):
-            y = 0.0
-            for i in range(n_order + 1):
-                if i != j:
-                    k_sum = 0.0
-                    for m in range(n_order + 1):
-                        if m != i and m != j:
-                            k_prod = torch.ones_like(x) / (nodes[j] - nodes[m])
-                            for n in range(n_order + 1):
-                                if n != i and n != j and n != m:
-                                    k_prod *= (x - nodes[n]) / (nodes[j] - nodes[n])
-                            k_sum += k_prod
-                    y += (1 / (nodes[j] - nodes[i])) * k_sum
-            ddp_list[:, :, j] = y
+        for h in range(self.ndim_in):
+            for j in range(n_order + 1):
+                y = 0.0
+                for i in range(n_order + 1):
+                    if i != j:
+                        k_sum = 0.0
+                        for m in range(n_order + 1):
+                            if m != i and m != j:
+                                k_prod = torch.ones_like(x[:,:,h]) / (nodes[j] - nodes[m])
+                                for n in range(n_order + 1):
+                                    if n != i and n != j and n != m:
+                                        k_prod *= (x[:,:,h] - nodes[n]) / (nodes[j] - nodes[n])
+                                k_sum += k_prod
+                        y += (1 / (nodes[j] - nodes[i])) * k_sum
+                ddp_list[:, :, j,h] = y
 
         return ddp_list
 
@@ -454,11 +464,14 @@ class LagrKANNautoinner(torch.nn.Module):
 
     def forward(self, x):
         """Forward pass for whole batch."""
-        #if len(x.shape) == 1:
-        #    raise SystemExit("Input must be 2D")
-        if len(x.shape) != 2:
-            x = x.unsqueeze(-1)
-            x = torch.repeat_interleave(x, self.n_width, -1)
+        if x.shape[1] != self.ndim_in:
+            raise SystemExit("Check the dimensions of the input")
+        
+        #if len(x.shape) != 2:
+        #    x = x.unsqueeze(-1)
+        # Change Shape of x and repeat it for the number of widths [n_batch, n_width, n_dim]
+        x = x.unsqueeze(1).repeat(1, self.n_width, 1)
+        #x = torch.repeat_interleave(x, self.n_width, 0)
         x_shift = self.to_shift(x)
 
         id_element_in = torch.floor(x_shift / self.n_order)
@@ -466,48 +479,47 @@ class LagrKANNautoinner(torch.nn.Module):
         id_element_in[id_element_in >= self.n_elements] = self.n_elements - 1
         id_element_in[id_element_in < 0] = 0
 
-        # what is the meaning of the following lines?
+        #
         nodes_in_l = (id_element_in * self.n_order).to(int)
         nodes_in_r = (nodes_in_l + self.n_order).to(int)
 
         x_transformed = self.to_ref(x_shift, nodes_in_l, nodes_in_r)
         delta_x = 0.5 * self.n_order * (self.x_max - self.x_min) / (self.n_nodes - 1)
-
         delta_x_1st = delta_x
         delta_x_2nd = delta_x**2
 
-        phi_local_ikp = self.lagrange(x_transformed, self.n_order)
-        #dphi_local_ikp = self.dlagrange(x_transformed, self.n_order)
-        #ddphi_local_ikp = self.ddlagrange(x_transformed, self.n_order)
+        phi_local_ikpj = self.lagrange(x_transformed, self.n_order)
+        #dphi_local_ikpj = self.dlagrange(x_transformed, self.n_order)
+        #ddphi_local_ikpj = self.ddlagrange(x_transformed, self.n_order)
 
-        phi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        #dphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-        #ddphi_ikp = torch.zeros((self.n_samples, self.n_width, self.n_nodes))
-
+        phi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
+        #dphi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
+        #ddphi_ikpj = torch.zeros((self.n_samples, self.n_width, self.n_nodes, self.ndim_in))
         for sample in range(self.n_samples):
-            for layer in range(self.n_width):
-                for node in range(self.n_order + 1):
-                    phi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                        phi_local_ikp[sample, layer, node]
-                    )
-                    #dphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                    #    dphi_local_ikp[sample, layer, node] / delta_x_1st
-                    #)
-                    #ddphi_ikp[sample, layer, nodes_in_l[sample, layer] + node] = (
-                    #    ddphi_local_ikp[sample, layer, node] / delta_x_2nd
-                    #)
+            for dim in range(self.ndim_in):
+                for layer in range(self.n_width):
+                    for node in range(self.n_order + 1):
+                        phi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
+                            phi_local_ikpj[sample, layer, node, dim]
+                        )
+                        #dphi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
+                        #    dphi_local_ikpj[sample, layer, node, dim] / delta_x_1st
+                        #)
+                        #ddphi_ikpj[sample, layer, nodes_in_l[sample, layer,dim] + node, dim] = (
+                        #    ddphi_local_ikpj[sample, layer, node, dim] / delta_x_2nd
+                        #)
 
-        t_ik = torch.einsum("kp, ikp -> ik", self.weight, phi_ikp)
-        #dt_ik = torch.einsum("kp, ikp -> ik", self.weight, dphi_ikp)
-        #ddt_ik = torch.einsum("kp, ikp -> ik", self.weight, ddphi_ikp)
+        t_ik = torch.einsum("kpj, ikpj -> ik", self.weight, phi_ikpj)
+        #dt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, dphi_ikpj)
+        #ddt_ik = torch.einsum("kpj, ikpj -> ik", self.weight, ddphi_ikpj)
 
         return {
             "t_ik": t_ik,
             #"dt_ik": dt_ik,
             #"ddt_ik": ddt_ik,
-            "phi_ikp": phi_ikp,
-            #"dphi_ikp": dphi_ikp,
-            #"ddphi_ikp": ddphi_ikp,
+            "phi_ikp": phi_ikpj,
+            #"dphi_ikp": dphi_ikpj,
+            #"ddphi_ikp": ddphi_ikpj,
             "delta_x": delta_x,
         }
 class LagrKANNautoouter(torch.nn.Module):
@@ -701,7 +713,7 @@ class KANN(torch.nn.Module):
             self.inner = LagrKANNautoinner(n_width, n_order, n_elements, n_samples, x_min, x_max, ndim_in)
             self.outer = LagrKANNautoouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
         else: 
-            self.inner = LagrangeKANNmaninner(n_width, n_order, n_elements, n_collocation, n_samples, x_min, x_max)
+            self.inner = LagrangeKANNmaninner(n_width, n_order, n_elements, n_collocation, n_samples, x_min, x_max,ndim_in)
             self.outer = LagrangeKANNmanouter(n_width, n_order, n_elements, n_samples, x_min, x_max)
         
             
@@ -717,7 +729,6 @@ class KANN(torch.nn.Module):
 
     def forward(self, x, epoch, sample):
         """Forward pass for whole batch."""
-        #coor = x[0]
         if self.autodiff is True:
             x = self.inner(x)["t_ik"]
             x = self.outer(x)["t_ik"]
@@ -735,8 +746,8 @@ class KANN(torch.nn.Module):
         outer_dict = self.outer(inner_dict["t_ik"])
 
         inner_dt_ik = inner_dict["dt_ik"]
-        inner_phi_ikp = self.inner.phi_ikp_inner[sample:(sample+1), :, :]
-        inner_dphi_ikp = self.inner.dphi_ikp_inner[sample:(sample+1), :, :]
+        inner_phi_ikpj = self.inner.phi_ikpj_inner[sample:(sample+1), :, :,:]
+        inner_dphi_ikpj = self.inner.dphi_ikpj_inner[sample:(sample+1), :, :,:]
 
         outer_t_ik = outer_dict["t_ik"]
         outer_dt_ik = outer_dict["dt_ik"]
@@ -751,33 +762,33 @@ class KANN(torch.nn.Module):
         )
 
         A_inner = (
-            torch.einsum("i, ik, ik, ikp -> kp",x,outer_ddt_ik,inner_dt_ik,inner_phi_ikp,)
-            + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_dphi_ikp)
-            + torch.einsum("ik, ikp -> ikp", outer_dt_ik, inner_phi_ikp)
-            + torch.einsum("i, ik, ikp -> ikp", x, outer_dt_ik, inner_phi_ikp)
+            torch.einsum("i, ik, ik, ikpj -> kp",x,outer_ddt_ik,inner_dt_ik,inner_phi_ikpj)
+            + torch.einsum("i, ik, ikpj -> ikpj", x, outer_dt_ik, inner_dphi_ikpj)
+            + torch.einsum("ik, ikpj -> ikpj", outer_dt_ik, inner_phi_ikpj)
+            + torch.einsum("i, ik, ikpj -> ikpj", x, outer_dt_ik, inner_phi_ikpj)
         )
         
         y1 = torch.einsum("ik -> i", outer_t_ik)
-        y = y0 + x * y1
+        y = y0 + x[:,0] * y1
         dy = torch.einsum("i, ik, ik -> i", x, outer_dt_ik, inner_dt_ik) + y1
         b = dy + y - h
         return {"A_inner": A_inner, "A_outer": A_outer, "b": b, "y": y, "dy": dy}
 
-def ode_hde(y0,x,step_loc):
+def ode_hde(y0,x, jump_loc):
     
-    def heaviside(x, step_loc):
-        return 1 if x >= step_loc else 0
+    def heaviside(x,jump_loc):
+        return 1 if x >= jump_loc else 0
     
     def system_heaviside(y,x):
-        H = heaviside(x,step_loc)
+        H = heaviside(x,jump_loc)
         dydx = H - y
         return dydx
     
     y_heaviside = odeint(system_heaviside, y0, x)
     
     return y_heaviside
-def heaviside_fct(x, step_loc):
-    tensor = torch.where(x >= step_loc, torch.ones_like(x), torch.zeros_like(x))
+def heaviside_fct(x,jump_loc):
+    tensor = torch.where(x >= jump_loc, torch.ones_like(x), torch.zeros_like(x))
     return tensor
 def preprocess_data(x,n_order,n_elements,x_min,x_max):
     n_nodes = n_elements * n_order + 1
@@ -843,7 +854,7 @@ def save_excel(values, autodiff, regression, speedup, prestop):
     print(f"Values saved to excel file: {exc_file}")
 
     return None
-def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str): 
+def plot_solution(saveloc,save_name,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str,jump_loc,log_name): 
     x_i = x_i.detach().view(-1,1).numpy()
     zeros = np.zeros_like(x_i)
     error_abs = np.abs(y_i - y_hat)
@@ -869,9 +880,9 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
         color="tab:green",
         linewidth=2
     )
-    ax.axvline(x=1.00, color='gray', linestyle='--', label = "Jump at x = 1.0", alpha=1.0)
+    ax.axvline(x=jump_loc, color='gray', linestyle='--', label = "Jump at x = 1.0", alpha=1.0)
     ax.scatter(x_i, zeros+0.250, color="red", s = 14, label="Collocation Points")
-    ax.set_title(f"L2-error: {l2:0.4e}, Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}, Spacing: {spacing}, training loss: {loss_str}")
+    ax.set_title(f"L2-error: {l2:0.4e}, Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}, Spacing: {spacing}, {log_name}, Training loss: {loss_str}")
     ax.set_xticks(np.arange(0, x_max+1, 1))
     #ax.set_ylim(0.2, 1.3)
     #ax.set_ylim(0.35, 1.05)
@@ -883,9 +894,16 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     axins = ax.inset_axes([0.75, 0.1, 0.2, 0.35])
     axins.plot(x_i, y_i, color="black", linewidth=2)
     axins.plot(x_i, y_hat, color="tab:green", linestyle="--", linewidth=2)
-    axins.axvline(x=1.0, color='gray', linestyle='--')
-    axins.set_xlim(0.9, 1.1)
-    axins.set_xticks([0.9, 1.0, 1.1])
+    axins.axvline(x=jump_loc, color='gray', linestyle='--')
+    axins.set_xlim(jump_loc-0.1, jump_loc+0.1)
+    axins.set_xticks([jump_loc-0.1, jump_loc, jump_loc+0.1])
+    
+    x_i_jumploc = int(np.where(x_i == jump_loc)[0][0])
+    y_i_jumpval = y_i[x_i_jumploc].item()
+    axins.set_ylim(y_i_jumpval-0.01,y_i_jumpval+0.01)
+    axins.set_yticks([y_i_jumpval-0.01,y_i_jumpval,y_i_jumpval+0.01])
+    axins.scatter(x_i, zeros+0.25, color="red", s = 14)
+    """
     if y0 == 0.8:
         axins.set_ylim(0.2925, 0.3125)# y0 = 0.8
         axins.set_yticks([0.2925, 0.3025, 0.3125])
@@ -906,14 +924,14 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
         axins.set_ylim(0.4385, 0.4585)# y0 = 1.2
         axins.set_yticks([0.4385, 0.4485, 0.4585])
         axins.scatter(x_i, zeros+0.44, color="red", s = 14)
-
+    """
     #axins.set_xticklabels([])
     #axins.set_yticklabels([])
 
     axins.grid(True)
     mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.25")
     if save: 
-        plt.savefig(os.path.join(saveloc,f"KANNODE_w{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.png"),dpi = 600)
+        plt.savefig(os.path.join(saveloc,f"KANNODE_{save_name}.png"),dpi = 600)
     if show:
         plt.show()
     ####################################################################################################################
@@ -956,27 +974,16 @@ def plot_solution(saveloc,save,show,x_i, y_hat, y_i, l2, n_width, n_order, n_sam
     ax_br.grid()
     plt.subplots_adjust(hspace=0.2)
     if save:
-        plt.savefig(os.path.join(saveloc,f"KANN_abs_w{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.png"),dpi = 600)
+        plt.savefig(os.path.join(saveloc,f"KANN_abs_{save_name}.png"),dpi = 600)
     if show:
         plt.show()
     return error_abs
-def collocationpoints(total_values):
-    nval1 = total_values // 5
-    nval2 = total_values - nval1
-    log_values = torch.logspace(0, torch.log10(torch.tensor(5.0)), steps=nval2, base=10)
-    log_values = torch.linspace(1, 5, steps=nval2)
-    # Second example: Logarithmic spacing between 1 and 0
-    log_values2 = torch.logspace(0, -2, steps=nval1, base=10)
-    log_values2 = 1 - log_values2  # Flip to go from 1 to 0
-    combined = torch.cat((log_values2, log_values))
-    combined = combined.detach().numpy()
-    return combined
-def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0,spacing,x_max,interval1):
+def create_animation(saveloc,save_name,save,show, solutions, col_exact, f_x_exact,n_width, n_order, n_samples,n_epochs,y0,spacing,interval1, jump_loc,log_name):
     col_exact = col_exact.detach()
     fig, ax = plt.subplots(figsize=(12, 7))
     ax.plot(col_exact.numpy(), f_x_exact, label="Analytical solution", color="black", alpha=1.0, linewidth=2)
     line, = ax.plot(col_exact.numpy(), solutions[:,0], linestyle="--", label="PINN solution", color="tab:green", linewidth=2)
-    ax.axvline(x=1.0, color='gray', linestyle='--', label='Jump at x = 1.0')
+    ax.axvline(x=jump_loc, color='gray', linestyle='--', label='Jump at x = 1.0')
     ax.scatter(col_exact.numpy(), np.zeros_like(col_exact.numpy())+0.250, color="red", s = 14, label="Collocation Points")
     #ax.set_xlim(0.4, 1)
     ax.set_ylim(0.2, 1.3)
@@ -987,12 +994,11 @@ def create_animation(saveloc,save,show, solutions, col_exact, f_x_exact,n_width,
     def animate(i):
         line.set_ydata(solutions[:,i])  # update the data
         epoch = i*interval1
-        ax.set_title(f"Epoch = {epoch}, L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e},Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Epochs: {n_epochs}")
+        ax.set_title(f"Epoch = {epoch},L2 error = {np.linalg.norm(f_x_exact - solutions[:,i].reshape(-1, 1)):.4e},Width: {n_width}, Order: {n_order}, Samples: {n_samples}, Spacing: {spacing}, {log_name}")
         return line, ax,
-
     ani = FuncAnimation(fig, animate, frames=solutions.shape[1], interval=100, blit=False, repeat = False)  # Change the interval here
     if save: 
-        ani.save(os.path.join(saveloc,f'KANN_animation_w{n_width}o{n_order}s{n_samples}sp{spacing}e{n_epochs}y{y0}.mp4'), writer='ffmpeg', fps=5, dpi = 600)  # Specify fps and writer
+        ani.save(os.path.join(saveloc,f'KANN_animation_{save_name}.mp4'), writer='ffmpeg', fps=5, dpi = 300)  # Specify fps and writer
     if show:
         plt.show()
     return None
@@ -1044,139 +1050,196 @@ def compute_nonuniform_points(x_min=0, x_max=10, cluster1=1, cluster2=2,
     
     return x_all
 
+def model_evaluation(n_samples,linearspacing, x_min, x_max,y0,step_loc_sol, log_fct,k, model):
+    epoch_idx = 0
+    # Create Output
+    if linearspacing:
+        col_points = np.linspace(x_min, x_max, n_samples)
+    else:
+        col_points = compute_nonuniform_points()
+    # Calculate the exact solution of the ODE
+    step_loc_sol
+    f_x_exact = ode_hde(y0, col_points,step_loc_sol)
+    y_i_sol = f_x_exact
+    # Transform numpy arrays to torch tensors
+    col_points = torch.from_numpy(col_points).requires_grad_(True)
+    x_i = col_points
+    heaviside_tensor = heaviside_fct(x_i, step_loc_sol)
+    # Create the Final Ouput of your Model
+    y_hatvec = torch.zeros_like(x_i)
+    dydy_hatvec = torch.zeros_like(x_i)
+    for sample in range(n_samples):
+        x = x_i[sample].unsqueeze(-1)
+        if log_fct:
+            j = 1/(1 + torch.exp(-k*(x - step_loc_sol)))
+        else:
+            j = heaviside_tensor[sample].unsqueeze(-1)
+        model_input = torch.cat([x, j], dim=0).unsqueeze(0)
+        y_hat = y0 + x * model(model_input,epoch_idx,sample)
+        dydy_hat= torch.autograd.grad(
+                    y_hat, x, torch.ones_like(x)
+                )[0]
+    
+        y_hatvec[sample] = y_hat
+        dydy_hatvec[sample] = dydy_hat
+        
+    # Adjust data so it can be saved to a csv file
+    y_hatvec = y_hatvec.detach()
+    dydy_hatvec = dydy_hatvec.detach()
+    return y_hatvec, dydy_hatvec , y_i_sol
+
 def main():
     """Execute main routine."""
-    # Read in all the parameters from the config file
-    n_width = parameters_ode.n_width
-    n_order = parameters_ode.n_order
-    n_samples = parameters_ode.n_samples
-    n_epochs = parameters_ode.n_epochs
-    spacing = parameters_ode.spacing
+    # Read all the parameters form the config file
+    # Model Parameters
+    n_width = parameters_ode_param.n_width
+    n_order = parameters_ode_param.n_order
+    n_samples = parameters_ode_param.n_samples
+    n_epochs = parameters_ode_param.n_epochs
+    spacing = parameters_ode_param.spacing
+    linearspacing = parameters_ode_param.linearspacing
     
-    x_min = parameters_ode.x_min
-    x_max = parameters_ode.x_max
-    y0 = parameters_ode.y0
-    step_loc = parameters_ode.step_loc
-    ndim_in = parameters_ode.ndim_in
+    # ODE Settings
+    x_min = parameters_ode_param.x_min
+    x_max = parameters_ode_param.x_max
+    y0 = parameters_ode_param.y0
+    step_loc = parameters_ode_param.step_loc
+    step_loc_add = parameters_ode_param.step_loc_add
+    step_loc_sol = parameters_ode_param.step_loc_sol
+    ndim_in = parameters_ode_param.ndim_in
+    k = parameters_ode_param.k
+    log_fct = parameters_ode_param.log_fct
     
-    log_fct = parameters_ode.log_fct
-    k = parameters_ode.k
+    # Solving Methods
+    autodiff = parameters_ode_param.autodiff
     
-    autodiff = parameters_ode.autodiff
-    save = parameters_ode.save
-    show = parameters_ode.show
-    saveloc = parameters_ode.saveloc
-    interval1 = parameters_ode.animation_interval
+    # Data Saving and Plot Options
+    save = parameters_ode_param.save
+    show = parameters_ode_param.show
+    enable_animation = parameters_ode_param.enable_animation
+    saveloc = parameters_ode_param.saveloc
+    anim_intvl = parameters_ode_param.animation_interval
     
-    loss_history = []
-    #rlist = np.array([1,5,10,25,50,100,200])
-    rlist = np.array([1.0])
-    for index in range(rlist.shape[0]):
-        loss = 0
-        residual = 0
-        _ = 0
-        y0 = float(rlist[index])
-        #n_elements = int((n_samples - spacing))
-        n_elements = int((n_samples - spacing)/n_order)
+    # How many different Parametrized versions 
+    Tot_runs = parameters_ode_param.Tot_runs
     
-        # Define if the collocation points are uniformly or non-uniformly spaced [could be also put into the conifg file later, only the True/False statement]
-        logpoints = False
-        if logpoints:
-            col_points_log = collocationpoints(n_samples)
-            f_x_exact = ode_hde(y0, col_points_log)
-            if False:
-                plt.figure(figsize=(8, 4))
-                plt.plot(col_points_log, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-                plt.scatter(col_points_log, np.zeros_like(col_points_log)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-                plt.grid()
-                plt.show()
-            col_points = torch.from_numpy(col_points_log).requires_grad_(True)
-        else:
+    # Calculate the number of elements
+    n_elements = int((n_samples - spacing) / n_order)
+    
+    # Containers to save the solutions for the animation and the final plot, respectively [adjustment for higher ouput dim necessary]
+    solutions = np.zeros((n_samples,int(n_epochs*Tot_runs/anim_intvl)+1))
+    with torch.no_grad():
+        # Create Tensor which saves all model outputs, x_i and y_i
+        data = torch.zeros((n_samples,(n_epochs*Tot_runs)+(Tot_runs*2)+1+1))
+        # Create Tensor which saves all gradients calculated dydx and x_i
+        dataGrad = torch.zeros((n_samples,(n_epochs*Tot_runs)+1+1))
+    
+    # Create big tensor for all the collocations points + parameters
+    model_input_big = torch.zeros((n_samples*Tot_runs,ndim_in))
+    for batch in range(Tot_runs):
+        # Define if collocation points (numpy vectors)
+        if linearspacing:
             col_points = np.linspace(x_min, x_max, n_samples)
-            f_x_exact = ode_hde(y0, col_points, step_loc)
-            if False:
-                plt.figure(figsize=(8, 4))
-                plt.plot(col_points, f_x_exact, label="Exact solution", color="blue", alpha=1.0, linewidth=2)
-                plt.scatter(col_points, np.zeros_like(col_points)+0.1, label="Initial condition", color="blue", alpha=1.0, linewidth=2)
-                plt.grid()
-                plt.show()
-            col_points = torch.from_numpy(col_points).requires_grad_(True)
-        
-        # Rename all the variables for the ODE
-        x_i = col_points
-        y_i = f_x_exact
-        
-        if log_fct:
-            print("Using logarithmic function")
         else:
-            print("Using Heaviside function")
-            heaviside_tensor = heaviside_fct(x_i, step_loc)
-
-        model = KANN(
-            n_width=n_width,
-            n_order=n_order,
-            n_elements=n_elements,
-            n_collocation = n_samples,
-            n_samples=1,
-            x_min=x_min,
-            x_max=x_max,
-            ndim_in = ndim_in,
-            autodiff=autodiff,
-        )
-        """
-        # Containers to save the solutions for the animation and the final plot, must be empty at the beginning [must be changed when higher dim output]
-        solutions = np.empty((n_samples,1))
-        with torch.no_grad():
-            data = torch.zeros((n_samples,n_epochs+3))
-            data[:,0] = x_i.view(-1)
-            y_i_torch = torch.from_numpy(y_i)
-            data[:,1] = y_i_torch.view(-1)
-            dataGrad = torch.zeros((n_samples,n_epochs+2))
-            dataGrad[:,0] = x_i.view(-1)
-        k = 1000
-        residual = 0 
-        _ = 0
-        sample = 0
-        """
-
+            col_points = compute_nonuniform_points()
         
-        with tqdm.trange(n_epochs) as pbar1:
-            for _ in pbar1:
-                loss_epoch = torch.zeros((n_samples,))
+        # Calculate the exact solution of the ODE
+        f_x_exact = ode_hde(y0, col_points,step_loc)
+        y_i = f_x_exact
+        y_i_torch = torch.from_numpy(y_i)
+        data[:,(batch+1)*2] = y_i_torch.view(-1).detach()
+        # Transform numpy arrays to torch tensors
+        col_points = torch.from_numpy(col_points).requires_grad_(True)
+        x_i = col_points
+        
+        data[:,0] = x_i.view(-1).detach()
+        dataGrad[:,0] = x_i.view(-1).detach()
+        
+        model_input_big[n_samples*batch : n_samples*(batch+1), 0] = x_i.view(-1)
+        # Create heaviside/logistic function for ODE HBC
+        if not log_fct:
+            heaviside_tensor = heaviside_fct(x_i, step_loc)
+            data[:,(batch*2+1)] = heaviside_tensor.view(-1).detach()
+            model_input_big[n_samples*batch : n_samples*(batch+1), 1] = heaviside_tensor.view(-1)
+        else:
+            logistic_function = 1 / (1 + torch.exp(-k * (x_i - step_loc)))
+            model_input_big[n_samples*batch : n_samples*(batch+1), 1] = logistic_function.view(-1)
+        step_loc += step_loc_add
+    
+    # Generate random permutation indices
+    shuffled_indices = torch.randperm(model_input_big.shape[0])
+
+    # Shuffle the rows
+    shuffled_vector = model_input_big[shuffled_indices]    
+    
+    # Create the model
+    model = KANN(
+        n_width=n_width,
+        n_order=n_order,
+        n_elements=n_elements,
+        n_collocation = n_samples,
+        n_samples=1,
+        x_min=x_min,
+        x_max=x_max,
+        ndim_in=ndim_in,
+        autodiff=autodiff,
+    )
+    
+    counter = 0 
+    with tqdm.trange(n_epochs) as pbar1:
+        for epoch_idx in pbar1:
+            loss_epoch = torch.zeros((n_samples,))
+            for batch in range(Tot_runs):
+                # Eigher choose the input as being shuffled or not
+                #model_input_i = model_input_big[n_samples*batch : n_samples*(batch+1), :]
+                model_input_i = shuffled_vector[n_samples*batch : n_samples*(batch+1), :]
                 for sample in range(n_samples):    
                     loss = 0  
-                    x = x_i[sample].unsqueeze(-1)
-                    # To be inside of the compuational graph the values of the logistic function must be calculated here
-                    if log_fct:
-                        j = 1/(1 + torch.exp(-k*(x - step_loc)))
-                    else:
-                        j = heaviside_tensor[sample].unsqueeze(-1)
+                    x = model_input_i[sample,0].unsqueeze(0)
+                    j = 1/(1 + torch.exp(-k*(x - step_loc)))
                     if autodiff is True:
-                        model_input = x
-                        y = y0 + x*(model(model_input,_,sample))
+                        model_input = model_input_i[sample,:].unsqueeze(0)
+                        y = y0 + x*(model(model_input,epoch_idx,sample))
                         dydx = torch.autograd.grad(
                             y, x, torch.ones_like(x), create_graph=True, materialize_grads=True
                         )[0]
                         residual = (dydx + y - j)
                     else:
                         with torch.no_grad():
-                            system = model.linear_system(x,_,sample,j,y0)
+                            raise SystemExit("Not implemented for hihger input dim")
+                            model_input = torch.cat([x, const], dim=0).unsqueeze(0)
+                            #model_input = torch.cat([x, h], dim=0).unsqueeze(0)
+                            #model_input = x
+                            system = model.linear_system(model_input,_,sample,h,y0)
                             A_inner = system["A_inner"]
                             A_outer = system["A_outer"]
                             residual = system["b"]
                             y = system["y"]
                             dydx = system["dy"]
+
+                    # Fill data into tensors for saving [Must be changed, currently they only fill memory till forced shutdown]
+                    with torch.no_grad():
+                        data[sample,(epoch_idx*Tot_runs+batch)+(Tot_runs*2)+1] = y.view(-1)
+                        dataGrad[sample,(epoch_idx*Tot_runs+batch)+1] = dydx.view(-1)
                     
                     loss = torch.mean(torch.square(residual))
+                    #loss2 = torch.norm(residual)
+                    #loss = residual
                     
                     if autodiff is True:
                         g_lst = torch.autograd.grad(
                             outputs=residual,
                             inputs=model.parameters(),
                         )
-                        norm = torch.linalg.norm(torch.hstack(g_lst))**2
+                        if ndim_in > 1:
+                            g_lst0_hstack = torch.cat(torch.unbind(g_lst[0], dim=-1), dim=-1)
+                            g_hstack = torch.hstack([g_lst0_hstack, g_lst[1]])
+                            norm = torch.linalg.norm(g_hstack)**2
+                        else:
+                            norm = torch.linalg.norm(torch.hstack(g_lst))**2
                     else:
-                        g_lst = [A_inner, A_outer]
+                        raise SystemExit("Not implemented for higher input dim")
+                        g_lst = [A_inner[0], A_outer]
 
                         norm = (
                             torch.linalg.norm(A_inner) ** 2
@@ -1192,80 +1255,79 @@ def main():
 
                 loss_mean = torch.mean(loss_epoch)
                 loss_str = f"{loss_mean.item():0.4e}"
-                loss_val = loss_mean.item()
+
                 pbar1.set_postfix(loss=loss_str)
 
-                loss_history.append(loss_val)     # store float for saving later   
-                Tickrate = pbar1.format_dict['rate']
-                """                if _ % interval1 == 0:
-                    with torch.no_grad():
-                        sampleeval = 0
-                        vec = torch.zeros(n_samples)
-                        for sampleeval in range(n_samples):
-                            x = x_i[sampleeval].unsqueeze(-1)
-                            vec[sampleeval] = y0+x*model(x,_,sampleeval)
-                        vec = vec.detach().numpy().reshape(-1,1)
-                        if _ == 0:
-                            solutions = vec
-                        else:
-                            solutions = np.hstack([solutions, vec])
-                """
-        print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
-        
-        # Create the Final Ouput of your Model
-        y_hatvec = torch.zeros_like(x_i)
-        for sample in range(n_samples):
-            x = x_i[sample].unsqueeze(-1)
-            y_hat = y0 + x * model(x,_,sample)
-            y_hatvec[sample] = y_hat
-        y_hatvec2 = y_hatvec  
-        y_hatvec = y_hatvec.detach()
-
-        y_hatvec = y_hatvec.view(-1,1).numpy()
-        l2 = np.linalg.norm(y_i - y_hatvec)
-        print(f"L2-error: {l2.item():0.4e}")
-        #solutions = np.hstack([solutions, y_hatvec])
-        
-        # If one wants to save the animation of the learning process, uncomment the line below
-        #create_animation(saveloc,save,show,solutions, x_i, y_i,n_width, n_order, n_samples,n_epochs,y0,spacing,x_max,interval1)
-        
-        # If one wants to directly plot the final solution, uncomment the line below
-        #error_abs = plot_solution(saveloc,save,show,x_i,y_hatvec, y_i, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str)
-        
-        # Transfomring the data to numpy arrays for saving, which then can be used for plotting
-        loss_history = np.array(loss_history)
-        x_np = x_i.detach().numpy()
-        y_np = y_hatvec2.detach().numpy()
-        n_width_np = np.full(x_np.shape, n_width)
-        n_order_np = np.full(x_np.shape, n_order)
-        n_samples_np = np.full(x_np.shape, n_samples)
-        n_epochs_np = np.full(x_np.shape, n_epochs)
-        spacing_np = np.full(x_np.shape, spacing)
-        y0_np = np.full(x_np.shape, y0)
-        step_loc_np = np.full(x_np.shape, step_loc)
-        time = np.full(x_np.shape, pbar1.format_dict['elapsed'])
-        loss_mean_np = np.full(x_np.shape, loss_mean.item())
-
-        npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_JUMP\BEST\{index}KANN_ODE_DISC_LOGFCT{log_fct}_nw{n_width}_no{n_order}_ns{n_samples}_sp{spacing}_y{y0}_steploc{step_loc}_{k}_RUN.npz"
-        if False:
-            np.savez(
-                npz_path,
-                x=x_np,
-                f_x=y_np,
-                n_width=n_width_np,
-                n_order=n_order_np,
-                n_samples=n_samples_np,
-                n_epochs=n_epochs_np,
-                spacing=spacing_np,
-                y0=y0_np,
-                step_loc=step_loc_np,
-                runtime=time,
-                loss_mean=loss_mean_np,
-                loss_history = loss_history
-            )
-
+                del loss, dydx, residual
+            
+                if enable_animation:
+                        if epoch_idx % anim_intvl == 0:
+                            with torch.no_grad():
+                                sampleeval = 0
+                                vec = torch.zeros(n_samples)
+                                if log_fct:
+                                    j_vecc = logistic_function
+                                else:
+                                    j_vecc = heaviside_tensor
+                                model_input = torch.stack([x_i, j_vecc], dim=1)
+                                for sampleeval in range(n_samples):
+                                    x = x_i[sampleeval].unsqueeze(-1)
+                                    model_input_i = model_input[sampleeval].unsqueeze(0)
+                                    y_hat_intermediary = y0+x*model(model_input_i,epoch_idx,sampleeval)
+                                    vec[sampleeval] = y_hat_intermediary
+                                vec = vec.detach().numpy().reshape(-1,1)
+                                if epoch_idx == 0:
+                                    solutions[:,counter] = vec[:,0].flatten()
+                                else:
+                                    solutions[:,counter] = vec[:,0].flatten()
+                                counter += 1
     
-
+    print(f"\nTotal Elapsed Time: {pbar1.format_dict['elapsed']:.2f} seconds")
+    
+    y_hatvec, dydy_hatvec,y_i_sol = model_evaluation(n_samples,linearspacing, x_min, x_max,y0,step_loc_sol, log_fct,k, model)
+    
+    data[:,(n_epochs*Tot_runs)+(Tot_runs*2)+1] = y_hatvec
+    dataGrad[:,(n_epochs*Tot_runs)+1] = dydy_hatvec
+    ysave = y_hatvec.numpy()
+    y_hatvec = y_hatvec.view(-1,1).numpy()
+    dydy_hatvec = dydy_hatvec.view(-1,1).numpy()
+    l2 = np.linalg.norm(y_i_sol - y_hatvec)
+    print(f"L2-error: {l2.item():0.4e}")
+    solutions[:,counter] = y_hatvec[:,0]
+    """
+    if log_fct:
+        save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc_sol}log{k}"
+        log_name = f"log{k}"
+    else:
+        save_name = f"w{n_width}o{n_order}s{n_samples}e{n_epochs}sp{spacing}y{y0}sl{step_loc_sol}h"
+        log_name = "H"
+    
+    if enable_animation:
+        create_animation(saveloc,save_name,save,show,solutions, x_i, y_i_sol,n_width, n_order, n_samples,n_epochs,y0,spacing,anim_intvl,step_loc_sol,log_name)
+    """
+    log_name = "empty"
+    save_name = "empty"
+    plot_solution(saveloc,save_name,save,show,x_i,y_hatvec, y_i_sol, l2, n_width, n_order, n_samples,n_epochs,y0,spacing,x_max, loss_str, step_loc_sol,log_name)
+    plt.close('all')
+    """
+    data = data.detach().numpy()
+    dataGrad = dataGrad.detach().numpy()
+    if save: 
+        np.savetxt(os.path.join(saveloc,f"data_{save_name}.csv"), data, delimiter=",",fmt='%1.3f')
+        np.savetxt(os.path.join(saveloc,f"datagrad_{save_name}.csv"), dataGrad, delimiter=",",fmt='%1.3f')
+        print("Data saved to csv file.")
+    """   
+    x_np = x_i.detach().numpy()
+    y_np = ysave
+    
+    npz_path = fr"E:\ETH\Master\25HS_MA\Final_Results_Report\KANN_ODE_JUMP\PARAM\{0}PARAM{log_fct}_nw{n_width}_no{n_order}_ns{n_samples}_sp{spacing}_y{y0}_steploc{step_loc}_{k}sol2.npz"
+    if True:
+        np.savez(
+            npz_path,
+            x=x_np,
+            f_x=y_np,
+        )
+        
     return None
 
 if __name__ == "__main__":
