@@ -1,16 +1,3 @@
-<<<<<<< HEAD
-n_width = 1
-n_order = 1
-n_samples = 51
-n_epochs = 3000
-tol = 1e-26
-interval = 10
-autodiff = False
-save = True
-show = False
-track_values = False
-saveloc = "E:/ETH/Master/25HS_MA/Data_Parametrized/Parametrized/Benchmark/"
-=======
 # Model Parameters
 n_width = 5
 n_order = 2
@@ -43,4 +30,3 @@ saveloc = "E:/ETH/Master/25HS_MA/Data_Parametrized/Parametrized/Benchmark/"
 
 # Number of Runs for study
 Tot_runs = 1
->>>>>>> Parametrized
